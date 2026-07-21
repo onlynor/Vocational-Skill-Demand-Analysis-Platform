@@ -1,0 +1,28 @@
+# 虚拟环境
+venv/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# Node 依赖
+node_modules/
+
+# 日志
+*.log
+
+# 编辑器
+.vscode/
+.idea/
+
+# Claude Code
+.claude/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 二进制文档（申请书模板不需要提交）
+*.doc
+*.docx

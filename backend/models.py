@@ -1,0 +1,96 @@
+from sqlalchemy import (
+    Column, Integer, String, Text, DateTime, ForeignKey, func,
+)
+from sqlalchemy.orm import relationship
+from .database import Base
+
+
+class RawJob(Base):
+    __tablename__ = "raw_jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(128), nullable=False)
+    salary_text = Column(String(64))
+    city = Column(String(32))
+    education = Column(String(16))
+    experience = Column(String(32))
+    requirements = Column(Text)
+    company = Column(String(128))
+    source = Column(String(32))
+
+
+class SynonymDict(Base):
+    __tablename__ = "synonym_dict"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    raw_word = Column(String(64), unique=True, nullable=False)
+    std_word = Column(String(64), nullable=False)
+
+
+class CleanedJob(Base):
+    __tablename__ = "cleaned_jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    raw_id = Column(Integer, ForeignKey("raw_jobs.id", ondelete="SET NULL"))
+    title = Column(String(128), nullable=False)
+    category_id = Column(Integer, ForeignKey("job_category.id", ondelete="SET NULL"))
+    salary_min = Column(Integer)
+    salary_max = Column(Integer)
+    salary_avg = Column(Integer)
+    city = Column(String(32))
+    education = Column(String(16))
+    experience = Column(String(32))
+    requirements = Column(Text)
+    company = Column(String(128))
+    source = Column(String(32))
+
+
+class StopWord(Base):
+    __tablename__ = "stop_words"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    word = Column(String(32), unique=True, nullable=False)
+
+
+class SkillDict(Base):
+    __tablename__ = "skill_dict"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    skill = Column(String(64), unique=True, nullable=False)
+    category = Column(String(32))
+
+
+class JobSkill(Base):
+    __tablename__ = "job_skill"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cleaned_job_id = Column(Integer, ForeignKey("cleaned_jobs.id", ondelete="CASCADE"), nullable=False)
+    skill = Column(String(64), nullable=False)
+    industry = Column(String(64))
+    frequency = Column(Integer, default=1)
+
+
+class SkillSynonym(Base):
+    __tablename__ = "skill_synonym"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    raw_word = Column(String(64), unique=True, nullable=False)
+    std_word = Column(String(64), nullable=False)
+
+
+class JobCategory(Base):
+    __tablename__ = "job_category"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(64), nullable=False)
+    parent_id = Column(Integer, ForeignKey("job_category.id", ondelete="CASCADE"))
+    sort_order = Column(Integer, default=0)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(32), unique=True, nullable=False)
+    password_hash = Column(String(256), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
