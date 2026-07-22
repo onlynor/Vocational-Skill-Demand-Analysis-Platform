@@ -1,68 +1,15 @@
-<template>
-  <div class="match-page">
-    <h2>技能匹配分析</h2>
-    <p class="desc">输入你掌握的技能，系统会匹配最适合的岗位，并分析技能差距。</p>
-
-    <div class="input-row">
-      <input
-        v-model="input"
-        placeholder="输入技能名称，按回车添加（如：Python MySQL Docker）"
-        @keydown.enter.prevent="addSkill"
-      />
-      <button @click="addSkill">添加</button>
-    </div>
-
-    <div class="tags" v-if="skills.length">
-      <span v-for="s in skills" :key="s" class="tag" @click="removeSkill(s)">{{ s }} ✕</span>
-    </div>
-
-    <button class="match-btn" @click="doMatch" :disabled="!skills.length || loading">
-      {{ loading ? '匹配中...' : '开始匹配' }}
-    </button>
-
-    <div class="results" v-if="results.length">
-      <h3>匹配结果（按匹配技能数排序）</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>岗位名称</th>
-            <th>公司</th>
-            <th>城市</th>
-            <th>平均薪资</th>
-            <th>已匹配技能</th>
-            <th>需学习技能</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(r, i) in results" :key="i">
-            <td>{{ r.title }}</td>
-            <td>{{ r.company }}</td>
-            <td>{{ r.city }}</td>
-            <td>{{ r.salary_avg ? '¥' + r.salary_avg.toLocaleString() : '-' }}</td>
-            <td>
-              <span v-for="s in r.matched_skills" :key="s" class="badge match">{{ s }}</span>
-            </td>
-            <td>
-              <span v-for="s in r.missing_skills" :key="s" class="badge miss">{{ s }}</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <p v-if="searched && !results.length" class="empty">未找到匹配的岗位。</p>
-  </div>
-</template>
-
 <script setup>
 import { ref } from 'vue'
 import api from '@/api'
+import EmptyState from '@/components/common/EmptyState.vue'
+import Loading from '@/components/common/Loading.vue'
 
 const input = ref('')
 const skills = ref([])
 const results = ref([])
 const loading = ref(false)
 const searched = ref(false)
+const error = ref('')
 
 function addSkill() {
   const name = input.value.trim()
@@ -79,10 +26,12 @@ function removeSkill(name) {
 async function doMatch() {
   loading.value = true
   searched.value = true
+  error.value = ''
   try {
     const { data } = await api.post('/profile/skills/match', { skills: skills.value })
     results.value = data
   } catch (e) {
+    error.value = '匹配请求失败，请稍后重试'
     console.error(e)
   } finally {
     loading.value = false
@@ -90,99 +39,216 @@ async function doMatch() {
 }
 </script>
 
+<template>
+  <div class="match-page">
+    <section class="panel card-surface">
+      <h2 class="section-title">技能匹配分析</h2>
+      <p class="section-desc">输入你掌握的技能，系统会匹配最适合的岗位，并分析技能差距</p>
+
+      <div class="input-row">
+        <input
+          v-model="input"
+          placeholder="输入技能名称，按回车添加（如：Python MySQL Docker）"
+          @keydown.enter.prevent="addSkill"
+        />
+        <button class="ghost-btn" @click="addSkill">添加</button>
+      </div>
+
+      <div class="tags" v-if="skills.length">
+        <span v-for="s in skills" :key="s" class="tag" @click="removeSkill(s)">{{ s }} ✕</span>
+      </div>
+
+      <button class="match-btn" @click="doMatch" :disabled="!skills.length || loading">
+        {{ loading ? '匹配中...' : '开始匹配' }}
+      </button>
+    </section>
+
+    <section class="panel card-surface">
+      <Loading v-if="loading" message="正在匹配岗位..." />
+      <p v-else-if="error" class="error">{{ error }}</p>
+      <template v-else-if="searched">
+        <div class="results-head">
+          <h3 class="section-title">匹配结果</h3>
+          <span class="result-count">共 {{ results.length }} 条 · 按匹配技能数排序</span>
+        </div>
+        <div v-if="results.length" class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>岗位名称</th>
+                <th>公司</th>
+                <th>城市</th>
+                <th>平均薪资</th>
+                <th>已匹配技能</th>
+                <th>需学习技能</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(r, i) in results" :key="i">
+                <td class="job-title">{{ r.title }}</td>
+                <td>{{ r.company }}</td>
+                <td>{{ r.city }}</td>
+                <td class="salary">{{ r.salary_avg ? '¥' + r.salary_avg.toLocaleString() : '-' }}</td>
+                <td><span v-for="s in r.matched_skills" :key="s" class="badge match">{{ s }}</span></td>
+                <td><span v-for="s in r.missing_skills" :key="s" class="badge miss">{{ s }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <EmptyState v-else message="未找到匹配的岗位" />
+      </template>
+      <EmptyState v-else message="输入技能并开始匹配，查看推荐结果" />
+    </section>
+  </div>
+</template>
+
 <style scoped>
 .match-page {
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1280px;
 }
-h2 {
-  color: #1a1a2e;
-  margin-bottom: 8px;
+.panel {
+  padding: 24px 28px;
 }
-.desc {
-  color: #888;
-  margin-bottom: 20px;
+.section-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-color);
 }
+.section-desc {
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
 .input-row {
   display: flex;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-top: 18px;
 }
 .input-row input {
   flex: 1;
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 14px;
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--border-color-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  color: var(--text-color);
+  transition: border-color var(--transition), box-shadow var(--transition);
 }
-.input-row button {
-  padding: 10px 20px;
-  background: #1a1a2e;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
+.input-row input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(79, 192, 141, 0.18);
 }
+.ghost-btn {
+  height: 42px;
+  padding: 0 20px;
+  background: var(--surface-soft);
+  color: var(--text-color);
+  border: 1px solid var(--border-color-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+}
+.ghost-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-hover);
+}
+
 .tags {
-  margin-bottom: 16px;
+  margin-top: 14px;
 }
 .tag {
   display: inline-block;
-  padding: 4px 12px;
-  margin: 0 6px 6px 0;
-  background: #e8f4fd;
-  color: #409EFF;
-  border-radius: 4px;
-  font-size: 13px;
+  padding: 5px 12px;
+  margin: 0 8px 8px 0;
+  background: var(--accent-blue-soft);
+  color: var(--accent-blue);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
   cursor: pointer;
+  transition: opacity var(--transition);
 }
+.tag:hover {
+  opacity: 0.7;
+}
+
 .match-btn {
-  padding: 10px 32px;
-  background: #4fc08d;
+  margin-top: 6px;
+  height: 44px;
+  padding: 0 36px;
+  background: var(--primary-color);
   color: #fff;
   border: none;
-  border-radius: 6px;
-  font-size: 15px;
-  cursor: pointer;
-  margin-bottom: 24px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  transition: background var(--transition);
+}
+.match-btn:hover:not(:disabled) {
+  background: var(--primary-hover);
 }
 .match-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
-.results h3 {
-  margin-bottom: 12px;
-  color: #333;
+
+.results-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.result-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+.error {
+  color: #e74c3c;
+  padding: 8px 0;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
 }
 table {
   width: 100%;
   border-collapse: collapse;
-  background: #fff;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
 th, td {
-  padding: 10px 12px;
+  padding: 12px 14px;
   text-align: left;
-  font-size: 13px;
-  border-bottom: 1px solid #f0f0f0;
+  font-size: var(--font-size-sm);
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
 }
 th {
-  background: #f8f9fa;
+  background: var(--surface-soft);
   font-weight: 600;
-  color: #555;
+  color: var(--text-secondary);
+}
+tbody tr:hover {
+  background: var(--surface-soft);
+}
+td.job-title {
+  font-weight: 600;
+  color: var(--text-color);
+}
+td.salary {
+  color: var(--accent-orange);
+  font-weight: 600;
 }
 .badge {
   display: inline-block;
-  padding: 2px 8px;
-  margin: 1px 3px;
-  border-radius: 3px;
-  font-size: 12px;
+  padding: 3px 9px;
+  margin: 2px 3px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
 }
-.badge.match { background: #e8f5e9; color: #4caf50; }
-.badge.miss { background: #fff3e0; color: #ff9800; }
-.empty {
-  color: #999;
-  margin-top: 20px;
-}
+.badge.match { background: var(--primary-soft); color: var(--primary-hover); }
+.badge.miss { background: var(--accent-orange-soft); color: #c77f12; }
 </style>
