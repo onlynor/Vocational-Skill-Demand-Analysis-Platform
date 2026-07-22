@@ -1,0 +1,72 @@
+/* ==========================================================================
+   Design Tokens — 职业画像分析平台
+   Single source of truth for color / spacing / radius / typography / shadow.
+   ========================================================================== */
+:root {
+  /* ---- Brand / accent ---- */
+  --primary-color: #4fc08d;          /* brand green */
+  --primary-hover: #3fa978;
+  --primary-soft: #e6f7ee;
+  --accent-blue: #2f7ad4;
+  --accent-blue-soft: #eaf2fd;
+  --accent-orange: #e6a23c;
+  --accent-orange-soft: #fdf3e2;
+
+  /* ---- Surfaces ---- */
+  --background-color: #f0f2f5;       /* app background */
+  --surface-color: #ffffff;          /* cards */
+  --surface-soft: #f7f8fa;
+  --sidebar-bg: #1f2a44;             /* deep slate */
+  --sidebar-bg-hover: rgba(255, 255, 255, 0.08);
+
+  /* ---- Text ---- */
+  --text-color: #1f2937;             /* primary text */
+  --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
+  --text-on-dark: rgba(255, 255, 255, 0.85);
+  --text-on-dark-muted: rgba(255, 255, 255, 0.55);
+
+  /* ---- Borders ---- */
+  --border-color: #e5e7eb;
+  --border-color-strong: #d1d5db;
+  --border-on-dark: rgba(255, 255, 255, 0.1);
+
+  /* ---- Radius ---- */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+
+  /* ---- Spacing scale ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* ---- Typography ---- */
+  --font-sans: 'Inter', 'Roboto', 'PingFang SC', 'Microsoft YaHei', -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-md: 15px;
+  --font-size-lg: 18px;
+  --font-size-xl: 22px;
+  --font-size-2xl: 28px;
+
+  /* ---- Shadows ---- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-login: 0 24px 64px rgba(0, 0, 0, 0.35);
+
+  /* ---- Layout ---- */
+  --sidebar-width: 232px;
+  --header-height: 60px;
+  --transition: 0.18s ease;
+}

@@ -1,10 +1,16 @@
 <script setup>
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import Sidebar from '@/components/dashboard/Sidebar.vue'
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+
+const pageMeta = {
+  '/jobs': { title: '职业画像', desc: '招聘数据采集与多维度统计分析' },
+  '/match': { title: '技能匹配', desc: '输入已有技能，推荐匹配岗位并分析差距' },
+}
 
 function handleLogout() {
   auth.logout()
@@ -13,31 +19,24 @@ function handleLogout() {
 </script>
 
 <template>
-  <div class="app-layout">
-    <!-- 登录页直接渲染，不加侧边栏 -->
-    <template v-if="route.path === '/login'">
-      <RouterView />
-    </template>
+  <template v-if="route.path === '/login'">
+    <RouterView />
+  </template>
 
-    <!-- 主布局：侧边栏 + 内容 -->
-    <template v-else>
-      <aside class="sidebar">
-        <div class="brand">
-          <h1>职业画像分析</h1>
+  <div v-else class="shell">
+    <Sidebar @logout="handleLogout" />
+
+    <div class="main">
+      <header class="topbar">
+        <div>
+          <h1 class="page-title">{{ pageMeta[route.path]?.title || '后台' }}</h1>
+          <p class="page-desc">{{ pageMeta[route.path]?.desc || '' }}</p>
         </div>
-        <nav>
-          <RouterLink to="/jobs" class="nav-item" active-class="active">
-            <span class="icon">&#9776;</span> 职业画像
-          </RouterLink>
-          <RouterLink to="/match" class="nav-item" active-class="active">
-            <span class="icon">&#9878;</span> 技能匹配
-          </RouterLink>
-        </nav>
-        <div class="user-area">
-          <span class="username">{{ auth.username }}</span>
-          <button @click="handleLogout" class="logout-btn">退出</button>
+        <div class="topbar-right">
+          <span class="env-tag">职业画像分析平台</span>
         </div>
-      </aside>
+      </header>
+
       <main class="content">
         <RouterView v-slot="{ Component }">
           <KeepAlive>
@@ -45,101 +44,55 @@ function handleLogout() {
           </KeepAlive>
         </RouterView>
       </main>
-    </template>
+    </div>
   </div>
 </template>
 
-<style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background: #f5f6fa;
-  color: #333;
-}
-a {
-  text-decoration: none;
-}
-</style>
-
 <style scoped>
-.app-layout {
-  display: flex;
+.shell {
   min-height: 100vh;
+  width: 100%;
 }
-.sidebar {
-  width: 220px;
-  background: #1a1a2e;
-  color: #fff;
+.main {
+  margin-left: var(--sidebar-width);
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  position: fixed;
+}
+.topbar {
+  position: sticky;
   top: 0;
-  left: 0;
-  bottom: 0;
-}
-.brand {
-  padding: 24px 20px 20px;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
-}
-.brand h1 {
-  font-size: 18px;
-  font-weight: 600;
-}
-nav {
-  flex: 1;
-  padding: 16px 0;
-}
-.nav-item {
-  display: block;
-  padding: 12px 20px;
-  color: rgba(255,255,255,0.7);
-  font-size: 14px;
-  transition: 0.15s;
-}
-.nav-item:hover {
-  background: rgba(255,255,255,0.08);
-  color: #fff;
-}
-.nav-item.active {
-  background: rgba(79, 192, 141, 0.2);
-  color: #4fc08d;
-  border-right: 3px solid #4fc08d;
-}
-.icon {
-  margin-right: 6px;
-}
-.user-area {
-  padding: 16px 20px;
-  border-top: 1px solid rgba(255,255,255,0.1);
+  z-index: 10;
+  height: var(--header-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 0 32px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border-color);
 }
-.username {
-  font-size: 13px;
-  color: rgba(255,255,255,0.8);
+.page-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-color);
 }
-.logout-btn {
-  background: rgba(255,255,255,0.15);
-  color: rgba(255,255,255,0.8);
-  border: none;
-  padding: 4px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
+.page-desc {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  margin-top: 2px;
 }
-.logout-btn:hover {
-  background: rgba(255,255,255,0.25);
+.env-tag {
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  background: var(--primary-soft);
+  color: var(--primary-hover);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
 }
 .content {
-  margin-left: 220px;
   flex: 1;
-  min-height: 100vh;
-  height: 100vh;
+  padding: 24px 32px;
   overflow-y: auto;
 }
 </style>

@@ -13,102 +13,171 @@
 - **Python** 3.13+
 - **Node.js** v22+
 - **MySQL** 9.x（需提前安装并启动服务）
+- 包管理器：后端 [uv](https://docs.astral.sh/uv/)，前端 [pnpm](https://pnpm.io/)
 
 ## 快速开始
 
 ### 1. 克隆项目
 
+```bash
+git clone <repo-url>
+cd Vocational-Skill-Demand-Analysis-Platform
+```
+
 ### 2. 一键导入数据库
 
-数据库包含所有表结构和采集好的岗位数据：
+`data/job_analysis_dump.sql` 包含所有表结构和采集好的岗位数据，但**不含 `CREATE DATABASE` / `USE` 语句**，必须指定库名：
 
 ```bash
-mysql -u root -p < data/job_analysis_dump.sql
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS job_analysis;"
+mysql -u root -p job_analysis < data/job_analysis_dump.sql
 ```
 
 > 导入后即拥有完整的 `job_analysis` 数据库，无需手动建表或爬数据。
 
-### 3. 安装后端依赖
+### 3. 配置环境变量
+
+复制模板并填入真实值（`.env` 已被 gitignore，不会提交）：
+
+```bash
+cp .env.example .env
+# 编辑 .env，填入 DB_PASSWORD 等；生产前用 `openssl rand -hex 32` 生成强 SECRET_KEY
+```
+
+`.env` 示例：
+
+```ini
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=
+DB_NAME=job_analysis
+SECRET_KEY=dev-secret-key-change-in-production   # 生产前务必替换
+```
+
+> 后端 `backend/config.py` 与爬虫 `spider/job_spider/pipelines.py` 均通过 `python-dotenv` 从**仓库根目录**的 `.env` 读取配置，仓库代码中无明文密码。
+
+### 4. 安装后端依赖
+
+在**仓库根目录**安装依赖（`load_dotenv()` 依赖 cwd 向上查找根目录 `.env`，不要进子目录运行）：
+
+```bash
+uv venv .venv
+uv pip install -r backend/requirements.txt --python .venv/bin/python
+```
+
+> 若无 uv，可用 pip：
 
 ```bash
 python -m venv venv
-venv\Scripts\activate          # Windows
-# source venv/bin/activate     # macOS/Linux
+source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r backend/requirements.txt
-```
-
-### 4. 修改数据库密码（如需要）
-
-编辑 `backend/config.py`，将 `DB_PASSWORD` 改为你的 MySQL root 密码：
-
-```python
-DB_PASSWORD = os.getenv("DB_PASSWORD", "你的密码")
 ```
 
 ### 5. 安装前端依赖
 
 ```bash
 cd frontend
-npm install
+pnpm install
 ```
+
+> 若无 pnpm，可用 `npm install`，但推荐 pnpm（仓库已提交 `pnpm-lock.yaml`）。
 
 ### 6. 启动项目
 
 **终端1 — 启动后端（端口 8000）：**
 
 ```bash
-venv\Scripts\activate
-uvicorn backend.main:app --reload --port 8000
+# 必须在仓库根目录执行（import 路径为 backend.main）
+.venv/bin/uvicorn backend.main:app --reload --port 8000
+# 或：uv run uvicorn backend.main:app --reload --port 8000
 ```
 
 **终端2 — 启动前端（端口 5173）：**
 
 ```bash
 cd frontend
-npm run dev
+pnpm dev
 ```
 
-浏览器打开 `http://localhost:5173` 即可使用。
+浏览器打开 `http://localhost:5173`，首次访问需注册账号或用库中已有账号登录。
 
 ## 项目结构
 
 ```
 ├── backend/                 # FastAPI 后端
-│   ├── main.py              # 应用入口
-│   ├── config.py            # 数据库 & JWT 配置
+│   ├── main.py              # 应用入口 + CORS
+│   ├── config.py            # 从 .env 读取 DB / JWT 配置
 │   ├── database.py          # SQLAlchemy 连接
 │   ├── models.py            # ORM 模型
 │   ├── schemas.py           # Pydantic 请求/响应模型
-│   ├── auth.py              # JWT 认证逻辑
+│   ├── auth.py              # bcrypt 哈希 + JWT 签发/校验
 │   ├── cleaner.py           # Pandas 数据清洗
 │   ├── segmenter.py         # Jieba 分词 + 技能提取
 │   ├── pipeline.py          # 完整数据处理流水线
 │   ├── routers/             # API 路由
 │   │   ├── auth_router.py   # 注册 / 登录
 │   │   └── profile_router.py # 职业画像查询 / 技能匹配
-│   ├── schema.sql           # 建表语句
 │   └── requirements.txt     # Python 依赖
 ├── frontend/                # Vue 3 前端
 │   └── src/
-│       ├── views/           # 页面组件
-│       │   ├── LoginView.vue        # 登录
-│       │   ├── DashboardView.vue    # 首页仪表盘
-│       │   ├── JobProfileView.vue   # 职业画像
+│       ├── views/           # 页面
+│       │   ├── LoginView.vue        # 登录 / 注册
+│       │   ├── JobProfileView.vue   # 职业画像仪表盘
 │       │   └── MatchView.vue        # 技能匹配
+│       ├── components/
+│       │   ├── common/      # BrandLogo / EmptyState / Loading
+│       │   └── dashboard/   # StatCard / ChartCard / Sidebar
+│       ├── styles/          # 设计 token（variables.css）+ 全局样式
 │       ├── api/index.js     # Axios 封装
-│       ├── stores/          # Pinia 状态管理
-│       └── router/          # 路由配置
-├── spider/                  # Scrapy 爬虫
+│       ├── stores/auth.js   # Pinia 认证状态
+│       └── router/index.js  # 路由 + 登录守卫
+├── spider/                  # Scrapy 爬虫（读根目录 .env 连库）
 │   └── job_spider/spiders/boss_spider.py
-├── data/                    # 数据文件
-│   ├── job_analysis_dump.sql   # 完整数据库导出
-│   └── boss_jobs_*_cleaned.xlsx # 按行业分类的清洗后数据
-└── demo_flow.py             # 数据处理流程演示脚本
+├── data/
+│   └── job_analysis_dump.sql   # 完整数据库导出
+└── .env.example             # 环境变量模板
 ```
+
+## API 概览
+
+路由前缀：认证 `/api/auth`，职业画像 `/api/profile`。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/auth/register` | 注册，返回 JWT |
+| POST | `/api/auth/login` | 登录，返回 JWT |
+| GET | `/api/profile/jobs/tree` | 行业-职位树 |
+| GET | `/api/profile/jobs/{title}` | 单岗位画像（统计 + 图表数据） |
+| GET | `/api/profile/skills/rank` | 技能重要度排行 |
+| GET | `/api/profile/skills/salary` | 技能-薪资关系 |
+| GET | `/api/profile/cities` | 城市需求量 |
+| GET | `/api/profile/education` | 学历分布 |
+| POST | `/api/profile/skills/match` | 技能匹配岗位 |
+
+前端 `axios` baseURL 指向 `http://localhost:8000/api`，请求拦截器自动加 `Authorization: Bearer <token>`；登录守卫对 `requiresAuth` 路由检查 localStorage token。
 
 ## 功能概览
 
-1. **账号系统** — 注册 / 登录（JWT 认证）
-2. **职业画像** — 搜索岗位，查看技能重要度排行、技能-薪资关系、地区需求量、学历/经验分布（ECharts 可视化）
-3. **技能匹配** — 输入已有技能，匹配最适合的岗位，给出技能差距建议
+1. **账号系统** — 注册 / 登录（bcrypt 哈希 + JWT 认证）
+2. **职业画像** — 选择行业→职位，查看岗位数量、平均薪资、薪资范围，技能排行 / 城市分布 / 学历要求 / 招聘公司（ECharts 可视化，统一 StatCard / ChartCard 组件）
+3. **技能匹配** — 输入已有技能，匹配最适合的岗位，分析已匹配/需补充技能
 
+## 数据处理管道
+
+```bash
+# 在仓库根目录执行
+python -m backend.pipeline                            # raw_jobs → 清洗 → 分词
+python -m backend.pipeline --reset                    # 先清空再处理
+python -m backend.pipeline --import-file data.xlsx    # Excel/CSV 直接导入后分词
+```
+
+导入文件需含列：`title, city, education, experience, requirements, company, source, salary_min, salary_max, salary_avg`。
+
+## 爬虫
+
+```bash
+cd spider && scrapy crawl boss
+```
+
+> 爬虫 `pipelines.py` 现已从根目录 `.env` 读取 DB 配置，与后端一致。

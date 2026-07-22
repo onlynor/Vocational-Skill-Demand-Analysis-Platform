@@ -1,0 +1,86 @@
+@import './variables.css';
+
+/* ==========================================================================
+   Reset
+   ========================================================================== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  color: var(--text-color);
+  background: var(--background-color);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input {
+  font-family: inherit;
+}
+
+ul {
+  list-style: none;
+}
+
+/* ==========================================================================
+   Scrollbar — subtle, dashboard-grade
+   ========================================================================== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.28);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ==========================================================================
+   Shared utility classes
+   ========================================================================== */
+.card-surface {
+  background: var(--surface-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+/* Remove leftover scaffold constraint so the dashboard fills the viewport. */
+#app {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
