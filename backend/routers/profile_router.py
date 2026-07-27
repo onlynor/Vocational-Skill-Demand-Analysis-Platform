@@ -153,8 +153,11 @@ def job_tree(db: Session = Depends(get_db)):
         jobs = [
             JobTreeLeaf(name=ch.name, count=title_counts.get(ch.name, 0))
             for ch in children
+            if title_counts.get(ch.name, 0) > 0
         ]
-        tree.append(JobCategoryItem(category=ind.name, jobs=jobs))
+        total = sum(j.count for j in jobs)
+        if total >= 10:
+            tree.append(JobCategoryItem(category=ind.name, jobs=jobs))
     return tree
 
 
