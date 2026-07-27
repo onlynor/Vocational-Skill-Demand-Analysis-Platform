@@ -39,10 +39,6 @@ AGENTS.md
 .claude/
 .aider*
 
-# 辅助脚本与本地文档（开发期产物，不入库）
-scripts/
-docs/
-
 # 本地生成产物
 *.local
 

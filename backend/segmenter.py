@@ -4,30 +4,6 @@ from collections import Counter
 import jieba
 from sqlalchemy.orm import Session
 from .models import CleanedJob, JobSkill, StopWord, SkillDict, SkillSynonym, JobCategory
-from . import skill_rules as SR
-
-
-def ensure_skill_lexicon(db: Session):
-    """幂等补充 skill_dict / stop_words / skill_synonym 表数据（仅 INSERT IGNORE）。"""
-    # 停用词
-    existing_sw = {r.word for r in db.query(StopWord).all()}
-    for w in SR.NOISE:
-        if w not in existing_sw:
-            db.add(StopWord(word=w))
-            existing_sw.add(w)
-    # 技能词典
-    existing_sk = {r.skill for r in db.query(SkillDict).all()}
-    for skill, cat in SR.SKILLS:
-        if skill not in existing_sk:
-            db.add(SkillDict(skill=skill, category=cat))
-            existing_sk.add(skill)
-    # 技能同义词
-    existing_syn = {r.raw_word.lower() for r in db.query(SkillSynonym).all()}
-    for raw, std in SR.SYNONYMS:
-        if raw.lower() not in existing_syn:
-            db.add(SkillSynonym(raw_word=raw, std_word=std))
-            existing_syn.add(raw.lower())
-    db.commit()
 
 
 def load_stop_words(db: Session) -> set[str]:

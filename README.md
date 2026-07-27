@@ -13,7 +13,7 @@
 - **Python** 3.13+
 - **Node.js** v22+
 - **MySQL** 9.x（需提前安装并启动服务）
-- 包管理器：后端 pip + venv，前端 [pnpm](https://pnpm.io/)（兼容 npm）
+- 包管理器：后端 [uv](https://docs.astral.sh/uv/)，前端 [pnpm](https://pnpm.io/)
 
 ## 快速开始
 
@@ -59,54 +59,48 @@ SECRET_KEY=dev-secret-key-change-in-production   # 生产前务必替换
 
 ### 4. 安装后端依赖
 
-在**仓库根目录**创建虚拟环境并安装（`load_dotenv()` 依赖 cwd 向上查找根目录 `.env`，不要进子目录运行）：
+在**仓库根目录**安装依赖（`load_dotenv()` 依赖 cwd 向上查找根目录 `.env`，不要进子目录运行）：
 
 ```bash
-# Linux / macOS
-python -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt
+uv venv .venv
+uv pip install -r backend/requirements.txt --python .venv/bin/python
 ```
+
+> 若无 uv，可用 pip：
 
 ```bash
-# Windows (PowerShell)
-python -m venv .venv
-.venv\Scripts\activate
+python -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r backend/requirements.txt
 ```
-
-> 项目依赖锁定在 `backend/requirements.txt`，用标准 pip 即可，无需额外包管理器。
 
 ### 5. 安装前端依赖
 
 ```bash
 cd frontend
-pnpm install      # 推荐 pnpm（仓库已提交 pnpm-lock.yaml）
+pnpm install
 ```
 
-> 若未安装 pnpm，可改用 npm 兼容运行：`npm install` → `npm run dev`。项目本身不依赖 pnpm 专有特性。
+> 若无 pnpm，可用 `npm install`，但推荐 pnpm（仓库已提交 `pnpm-lock.yaml`）。
 
 ### 6. 启动项目
 
 **终端1 — 启动后端（端口 8000）：**
 
 ```bash
-# 必须在仓库根目录、且已激活 .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-uvicorn backend.main:app --reload --port 8000
+# 必须在仓库根目录执行（import 路径为 backend.main）
+.venv/bin/uvicorn backend.main:app --reload --port 8000
+# 或：uv run uvicorn backend.main:app --reload --port 8000
 ```
 
 **终端2 — 启动前端（端口 5173）：**
 
 ```bash
 cd frontend
-pnpm dev          # 无 pnpm 时用 npm run dev
+pnpm dev
 ```
 
 浏览器打开 `http://localhost:5173`，首次访问需注册账号或用库中已有账号登录。
-
-> 启动前如遇端口被占用（`Errno 98 Address already in use`），请先释放：
-> `lsof -ti:8000 | xargs -r kill -9`，或换端口 `--port 8001`。
 
 ## 项目结构
 
@@ -118,10 +112,7 @@ pnpm dev          # 无 pnpm 时用 npm run dev
 │   ├── models.py            # ORM 模型
 │   ├── schemas.py           # Pydantic 请求/响应模型
 │   ├── auth.py              # bcrypt 哈希 + JWT 签发/校验
-│   ├── cleaner.py           # Pandas 数据清洗（含缺失共底 + 垃圾标题剔除）
-│   ├── category_rules.py    # 数据驱动职业分类规则配置（关键词权重）
-│   ├── classifier.py        # 分类器：标题+要求文本 → 行业/职位 category_id
-│   ├── skill_rules.py       # 技能词典 / 停用词 / 同义补充配置
+│   ├── cleaner.py           # Pandas 数据清洗
 │   ├── segmenter.py         # Jieba 分词 + 技能提取
 │   ├── pipeline.py          # 完整数据处理流水线
 │   ├── routers/             # API 路由
@@ -175,21 +166,13 @@ pnpm dev          # 无 pnpm 时用 npm run dev
 ## 数据处理管道
 
 ```bash
-# 在仓库根目录、激活 .venv 后执行
-python -m backend.pipeline                            # raw_jobs → 清洗 → 分类 → 分词
-python -m backend.pipeline --reset                    # 先清空 cleaned_jobs/job_skill 再处理
+# 在仓库根目录执行
+python -m backend.pipeline                            # raw_jobs → 清洗 → 分词
+python -m backend.pipeline --reset                    # 先清空再处理
 python -m backend.pipeline --import-file data.xlsx    # Excel/CSV 直接导入后分词
 ```
 
-管道做四件事：
-1. **清洗去重** — 同义词统一、去重复、薪资解析、字段缺失共底与归一（学历「不限」、经验「不限经验」、城市/公司/来源「未知」）
-2. **垃圾过滤** — 自动剔除广告话术/钓饵标题（「外企双休」「包吃住」「240/天」等非真实岗位），`raw_jobs` 保留原始数据
-3. **数据驱动分类** — 按 `backend/category_rules.py` 的关键词权重规则，把岗位归入 18 个一级行业下的具名职位；未命中的长尾岗位按真实标题细分到「其他」行业，使 `category_id` 覆盖率达 100%
-4. **技能提取** — Jieba 分词 + 技能词典匹配 + 停用词过滤 + 同义归一，写入 `job_skill`
-
 导入文件需含列：`title, city, education, experience, requirements, company, source, salary_min, salary_max, salary_avg`。
-
-> 新增行业/职位只需编辑 `backend/category_rules.py`，无需改代码；补技能/停用词只需编辑 `backend/skill_rules.py`。
 
 ## 爬虫
 

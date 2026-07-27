@@ -8,7 +8,7 @@ from ..schemas import (
     EducationPieItem, SkillMatchRequest, SkillMatchItem,
     JobCategoryItem, JobTreeLeaf, JobProfileItem,
 )
-from ..models import CleanedJob, JobSkill, SkillDict, JobCategory, SkillSynonym
+from ..models import CleanedJob, JobSkill, SkillDict, JobCategory
 
 router = APIRouter(prefix="/api/profile", tags=["职业画像"])
 
@@ -78,63 +78,37 @@ def skill_match(body: SkillMatchRequest, db: Session = Depends(get_db)):
     if not body.skills:
         return []
 
-    # 1. 收集用户技能的标准名（走 skill_synonym 归一），在 skill_dict 中的才是真技能
-    user_raw = {s.strip() for s in body.skills if s.strip()}
-    if not user_raw:
-        return []
-    syn_pairs = db.query(SkillSynonym).all()
-    syn_map = {r.raw_word.lower(): r.std_word for r in syn_pairs}
-    user_std = set()
-    for s in user_raw:
-        user_std.add(syn_map.get(s.lower(), s))
-    user_std_lower = {s.lower() for s in user_std}
-
-    # 2. 行业过滤：若指定 industry，收集该行业下所有 category_id
-    cat_ids = None
+    user_skills_lower = {s.lower() for s in body.skills}
+    query = db.query(CleanedJob)
     if body.industry:
         industry = db.query(JobCategory).filter(
             JobCategory.parent_id.is_(None),
             JobCategory.name == body.industry,
         ).first()
-        if not industry:
+        if industry:
+            titles = {
+                r[0] for r in db.query(JobCategory.name)
+                .filter(JobCategory.parent_id == industry.id).all()
+            }
+            query = query.filter(CleanedJob.title.in_(titles))
+        else:
             return []
-        cat_ids = {r[0] for r in db.query(JobCategory.id)
-                             .filter(JobCategory.parent_id == industry.id).all()}
-
-    # 3. 从 job_skill 反查命中用户技能的岗位（不再用 limit(200) 截断全表）
-    skill_rows = db.query(JobSkill).filter(JobSkill.skill.in_(list(user_std))).all()
-    job_skill_map: dict[int, set[str]] = {}
-    for r in skill_rows:
-        if r.skill.lower() not in user_std_lower:
-            continue  # 同义词归一后只保留用户输入的真技能（大小写不敏感）
-        job_skill_map.setdefault(r.cleaned_job_id, set()).add(r.skill)
-    if not job_skill_map:
-        return []
-
-    # 4. 关联 cleaned_jobs 取详情，并拉取每个岗位全部技能做完整交集/差集
-    job_ids = list(job_skill_map.keys())
-    jobs = db.query(CleanedJob).filter(CleanedJob.id.in_(job_ids)).all()
-    if cat_ids is not None:
-        jobs = [j for j in jobs if j.category_id in cat_ids]
-    if not jobs:
-        return []
-    full_job_ids = [j.id for j in jobs]
-    all_skill_rows = db.query(JobSkill).filter(JobSkill.cleaned_job_id.in_(full_job_ids)).all()
-    full_skills: dict[int, set[str]] = {}
-    for r in all_skill_rows:
-        full_skills.setdefault(r.cleaned_job_id, set()).add(r.skill)
+    jobs = query.limit(200).all()
 
     results = []
     for job in jobs:
-        all_set = full_skills.get(job.id, set())
-        if not all_set:
+        rows = db.query(JobSkill.skill).filter(
+            JobSkill.cleaned_job_id == job.id
+        ).all()
+        job_skills = {r[0] for r in rows}
+        if not job_skills:
             continue
-        all_lower = {s.lower() for s in all_set}
-        matched_lower = user_std_lower & all_lower
+        job_skills_lower = {s.lower() for s in job_skills}
+        matched_lower = user_skills_lower & job_skills_lower
         if not matched_lower:
             continue
-        matched = {s for s in all_set if s.lower() in matched_lower}
-        missing = all_set - matched
+        matched = {s for s in job_skills if s.lower() in matched_lower}
+        missing = job_skills - matched
         results.append({
             "title": job.title,
             "company": job.company or "",
@@ -151,7 +125,7 @@ def skill_match(body: SkillMatchRequest, db: Session = Depends(get_db)):
             title=r["title"], company=r["company"], city=r["city"],
             salary_avg=r["salary_avg"], matched_skills=r["matched_skills"],
             missing_skills=r["missing_skills"],
-         )
+        )
         for r in results[:20]
     ]
 
@@ -164,11 +138,9 @@ def job_tree(db: Session = Depends(get_db)):
         .order_by(JobCategory.sort_order)
         .all()
     )
-    # 按 category_id 计数（数据驱动分类后真实落点），而非标题字符串相等
-    cat_counts = dict(
-        db.query(CleanedJob.category_id, func.count(CleanedJob.id))
-        .filter(CleanedJob.category_id.isnot(None))
-        .group_by(CleanedJob.category_id).all()
+    title_counts = dict(
+        db.query(CleanedJob.title, func.count(CleanedJob.id))
+        .group_by(CleanedJob.title).all()
     )
     tree = []
     for ind in industries:
@@ -179,7 +151,7 @@ def job_tree(db: Session = Depends(get_db)):
             .all()
         )
         jobs = [
-            JobTreeLeaf(name=ch.name, count=cat_counts.get(ch.id, 0))
+            JobTreeLeaf(name=ch.name, count=title_counts.get(ch.name, 0))
             for ch in children
         ]
         tree.append(JobCategoryItem(category=ind.name, jobs=jobs))
