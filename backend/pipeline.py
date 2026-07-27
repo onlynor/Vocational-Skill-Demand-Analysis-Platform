@@ -17,8 +17,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from .database import SessionLocal
 from .models import CleanedJob, JobSkill
-from .cleaner import load_raw_jobs, load_synonyms, clean, save_cleaned
-from .segmenter import process_all_jobs
+from .cleaner import load_raw_jobs, load_synonyms, clean, save_cleaned, _other_fallback_factory
+from .segmenter import process_all_jobs, ensure_skill_lexicon
+from .classifier import ensure_categories, CategoryClassifier
 
 
 REQUIRED_COLUMNS = [
@@ -36,7 +37,7 @@ def reset_tables(db):
     print("已清空 cleaned_jobs / job_skill 表")
 
 
-def import_from_excel(db, filepath: str):
+def import_from_excel(db, filepath: str, classifier):
     """从 Excel/CSV 直接导入 cleaned_jobs，跳过 raw_jobs 和清洗步骤"""
     if filepath.endswith(".csv"):
         df = pd.read_csv(filepath)
@@ -49,25 +50,22 @@ def import_from_excel(db, filepath: str):
         print(f"需要的列：{REQUIRED_COLUMNS}")
         return 0
 
-    # 构建 title → category_id 映射
-    from .models import JobCategory
-    titles = set(df["title"].dropna().unique())
-    cat_map = {
-        r.name: r.id
-        for r in db.query(JobCategory).filter(JobCategory.parent_id.isnot(None), JobCategory.name.in_(titles)).all()
-    }
-
     count = 0
+    fallback = _other_fallback_factory(db, classifier)
     for _, row in df.iterrows():
+        title = row["title"]
+        cid = classifier.classify(title, row.get("requirements"))
+        if cid is None:
+            cid = fallback(title, row.get("requirements"))
         job = CleanedJob(
-            title=row["title"],
-            category_id=cat_map.get(row["title"]),
-            city=row.get("city"),
-            education=row.get("education"),
-            experience=row.get("experience"),
-            requirements=row.get("requirements"),
-            company=row.get("company"),
-            source=row.get("source"),
+            title=title,
+            category_id=cid,
+            city=_to_str(row.get("city"), "未知"),
+            education=_to_str(row.get("education"), "不限"),
+            experience=_to_str(row.get("experience"), "不限经验"),
+            requirements=_to_str(row.get("requirements"), ""),
+            company=_to_str(row.get("company"), "未知"),
+            source=_to_str(row.get("source"), "未知"),
             salary_min=_to_int(row.get("salary_min")),
             salary_max=_to_int(row.get("salary_max")),
             salary_avg=_to_int(row.get("salary_avg")),
@@ -89,6 +87,12 @@ def _to_int(val):
         return None
 
 
+def _to_str(val, default):
+    if val is None or (isinstance(val, float) and pd.isna(val)) or not str(val).strip():
+        return default
+    return str(val)
+
+
 def run():
     parser = argparse.ArgumentParser(description="招聘数据处理管道")
     parser.add_argument("--reset", action="store_true", help="清空清洗表后重新处理")
@@ -97,11 +101,16 @@ def run():
 
     db = SessionLocal()
 
+    # 准备：幂等补全新分类节点 + 技能词典，构建数据驱动分类器
+    ensure_categories(db)
+    ensure_skill_lexicon(db)
+    classifier = CategoryClassifier(db)
+
     try:
         if args.import_file:
             if args.reset:
                 reset_tables(db)
-            n = import_from_excel(db, args.import_file)
+            n = import_from_excel(db, args.import_file, classifier)
             if n > 0:
                 total = process_all_jobs(db)
                 print(f"分词完成，共提取 {total} 条技能关联")
@@ -122,9 +131,10 @@ def run():
             synonyms = load_synonyms(db)
             print(f"② 加载 {len(synonyms)} 条同义词规则")
             cleaned_df = clean(df, synonyms)
-            print(f"③ 清洗完成，剩余 {len(cleaned_df)} 条（去重 {len(df) - len(cleaned_df)} 条）")
+            garb = cleaned_df.attrs.get("garbage_removed", 0)
+            print(f"③ 清洗完成，剩余 {len(cleaned_df)} 条（剔除垃圾标题 {garb} 条，去重 {len(df) - garb - len(cleaned_df)} 条）")
 
-            save_cleaned(db, cleaned_df)
+            save_cleaned(db, cleaned_df, classifier)
             print("④ 清洗数据已写入 cleaned_jobs 表")
 
             total = process_all_jobs(db)
