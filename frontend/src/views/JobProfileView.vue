@@ -72,7 +72,7 @@ const skillOption = computed(() => {
   const names = data.map(s => s.name).reverse()
   return {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    grid: { left: 20, right: 24, top: 12, bottom: 12, containLabel: true },
+    grid: { left: 140, right: 40, top: 12, bottom: 12 },
     xAxis: {
       type: 'value',
       axisLine: { show: false },
@@ -84,7 +84,7 @@ const skillOption = computed(() => {
       data: names,
       axisLine: { lineStyle: { color: '#e5e7eb' } },
       axisTick: { show: false },
-      axisLabel: { fontSize: 12, color: '#4b5563', width: 120, overflow: 'truncate' },
+      axisLabel: { fontSize: 12, color: '#4b5563', interval: 0 },
     },
     series: [{
       type: 'bar',
