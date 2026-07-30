@@ -79,34 +79,48 @@ def skill_match(body: SkillMatchRequest, db: Session = Depends(get_db)):
         return []
 
     user_skills_lower = {s.lower() for s in body.skills}
-    query = db.query(CleanedJob)
+
+    # Step 1: find which job_skill entries match user input (case-insensitive)
+    all_skill_rows = db.query(JobSkill.cleaned_job_id, JobSkill.skill).all()
+    # Build per-job skill sets and collect matching job IDs
+    job_skills_map: dict[int, set[str]] = {}
+    matching_job_ids: set[int] = set()
+
+    for job_id, skill in all_skill_rows:
+        job_skills_map.setdefault(job_id, set()).add(skill)
+
+    for job_id, skills in job_skills_map.items():
+        if {s.lower() for s in skills} & user_skills_lower:
+            matching_job_ids.add(job_id)
+
+    if not matching_job_ids:
+        return []
+
+    # Step 2: fetch matching CleanedJob rows, with optional industry filter
+    query = db.query(CleanedJob).filter(CleanedJob.id.in_(matching_job_ids))
     if body.industry:
         industry = db.query(JobCategory).filter(
             JobCategory.parent_id.is_(None),
             JobCategory.name == body.industry,
         ).first()
         if industry:
-            titles = {
+            titles = [
                 r[0] for r in db.query(JobCategory.name)
                 .filter(JobCategory.parent_id == industry.id).all()
-            }
+            ]
             query = query.filter(CleanedJob.title.in_(titles))
         else:
             return []
-    jobs = query.limit(200).all()
+    jobs = query.all()
 
+    # Step 3: build results
     results = []
     for job in jobs:
-        rows = db.query(JobSkill.skill).filter(
-            JobSkill.cleaned_job_id == job.id
-        ).all()
-        job_skills = {r[0] for r in rows}
+        job_skills = job_skills_map.get(job.id, set())
         if not job_skills:
             continue
         job_skills_lower = {s.lower() for s in job_skills}
         matched_lower = user_skills_lower & job_skills_lower
-        if not matched_lower:
-            continue
         matched = {s for s in job_skills if s.lower() in matched_lower}
         missing = job_skills - matched
         results.append({

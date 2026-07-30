@@ -482,7 +482,10 @@ def match_title(title: str) -> str | None:
         return '财务分析'
     if re.search(r'财务.*经理|财务.*主管|财务.*总监|cfo|财务.*负责人', t_lower):
         return '财务经理'
-    if re.search(r'投资.*分析|投资.*研究|行业.*研究|行业.*分析|证券.*分析|投资.*助理|投研|买方.*研究|卖方.*研究|研究员', t_lower):
+    if re.search(r'投资.*分析|投资.*研究|行业.*研究|行业.*分析|证券.*分析|投资.*助理|投研|买方.*研究|卖方.*研究', t_lower):
+        return '投资分析师'
+    # 研究员 only matched when title contains financial context signals
+    if re.search(r'研究员', t_lower) and re.search(r'投资|证券|基金|股票|债券|期货|信托|私募|公募|投行|量化|交易|买方|卖方|行研|投研|宏观.*经济|策略.*研究|fof|对冲|衍生品|大宗.*商品|reits|mbs|abs|金融', t_lower):
         return '投资分析师'
     if re.search(r'基金.*经理|基金.*管理|投资.*经理|资产.*管理|私募|公募|基金.*投资|基金.*研究', t_lower):
         return '基金经理'
