@@ -1,0 +1,65 @@
+# Production deployment: MySQL + FastAPI backend + Nginx (static frontend +
+# reverse proxy). Reads secrets from a root-level .env — copy .env.example
+# to .env and fill in real values first; see the "生产部署" section in
+# README.md for the full walkthrough.
+services:
+  mysql:
+    image: mysql:9
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME:-job_analysis}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # Only runs on first boot against an empty data volume (standard
+      # MySQL image behavior) — the dump has no CREATE DATABASE/USE
+      # statement, so MYSQL_DATABASE above is what makes this apply against
+      # the right schema.
+      - ./data/job_analysis_dump.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    # Not published to the host by default — safer, and nothing outside the
+    # compose network needs direct DB access. Uncomment for local admin
+    # access via a MySQL client, or prefer an SSH tunnel instead.
+    # ports:
+    #   - "127.0.0.1:3306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Overrides whatever's in .env: inside the compose network the DB is
+      # reachable at the service name, not localhost. Also force ENV so a
+      # stray ENV=development in .env can't disable the SECRET_KEY guard here.
+      DB_HOST: mysql
+      ENV: production
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # Not published to the host — only Nginx (frontend) talks to it, over
+    # the internal compose network.
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
