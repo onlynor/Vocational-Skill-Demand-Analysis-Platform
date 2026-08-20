@@ -32,14 +32,14 @@ cd Vocational-Skill-Demand-Analysis-Platform
 
 ### 2. 一键导入数据库
 
-`data/job_analysis_dump.sql` 包含所有表结构和采集好的岗位数据，但**不含 `CREATE DATABASE` / `USE` 语句**，必须指定库名：
+`data/job_analysis.sql` 包含所有表结构和采集好的岗位数据，但**不含 `CREATE DATABASE` / `USE` 语句**，必须指定库名：
 
 ```bash
 mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS job_analysis;"
-mysql -u root -p job_analysis < data/job_analysis_dump.sql
+mysql -u root -p job_analysis < data/job_analysis.sql
 ```
 
-> 导入后即拥有完整的 `job_analysis` 数据库，无需手动建表或爬数据。个人求职画像功能用到的 `user_profile` 表不在 dump 里（是后加的功能），建库后需要额外执行一次 `backend/schema.sql` 里对应的 `CREATE TABLE user_profile ...` 语句（或者直接跑一遍整份 `schema.sql`，里面的表都是 `CREATE TABLE IF NOT EXISTS`，不会覆盖已有数据）。
+> 导入后即拥有完整的 `job_analysis` 数据库（含全部 10 张表，包括 `user_profile`），无需手动建表或爬数据。
 
 ### 3. 配置环境变量
 
@@ -135,7 +135,7 @@ pnpm dev
 │   │   ├── auth_router.py       # 注册 / 登录
 │   │   ├── profile_router.py    # 职业画像查询 / 技能匹配（全部需要登录）
 │   │   └── account_router.py    # 个人求职画像的读取与保存（全部需要登录）
-│   ├── schema.sql               # 参考建表语句（真实数据以 data/job_analysis_dump.sql 为准）
+│   ├── schema.sql               # 参考建表语句（真实数据以 data/job_analysis.sql 为准）
 │   ├── requirements.txt         # 后端服务自身的直接依赖
 │   └── Dockerfile               # 生产镜像构建
 ├── frontend/                     # Vue 3 前端
@@ -160,7 +160,7 @@ pnpm dev
 │   ├── job_spider/spiders/boss_spider.py
 │   └── requirements.txt          # 爬虫自身的直接依赖，只有跑爬虫时需要
 ├── data/
-│   └── job_analysis_dump.sql     # 完整数据库导出
+│   └── job_analysis.sql     # 完整数据库导出
 ├── docker-compose.yml             # 生产部署编排（mysql + backend + frontend）
 ├── .dockerignore
 └── .env.example                   # 后端/爬虫共用的环境变量模板
@@ -234,7 +234,7 @@ curl http://<服务器IP>/api/health
 ```
 
 **关键点**：
-- `data/job_analysis_dump.sql` 通过 `docker-entrypoint-initdb.d` 挂载，**只在 `mysql_data` 数据卷首次为空时执行一次**；之后重启/更新不会重新导入，也不会覆盖数据。`user_profile` 表不在 dump 里，首次部署后需要额外执行一次 `backend/schema.sql` 里的建表语句（同上「快速开始」第 2 步）。
+- `data/job_analysis.sql` 通过 `docker-entrypoint-initdb.d` 挂载，**只在 `mysql_data` 数据卷首次为空时执行一次**；之后重启/更新不会重新导入，也不会覆盖数据。dump 已包含 `user_profile` 表，无需额外建表。
 - 前端的 API 地址在**构建时**烘焙进 JS 包（`VITE_API_BASE_URL`，`docker-compose.yml` 里传的是 `/api`），改了这个值必须 `docker compose up -d --build frontend` 重新构建，而不是重启容器就行。
 - `backend` 没有发布端口到宿主机，只有 `frontend`（Nginx）对外监听 80——外部无法绕过反代直接打后端。
 - **HTTPS 没有包含在这套 compose 里**——上面这套只监听 80。有了真实域名并解析到服务器后，推荐在宿主机上装 [Certbot](https://certbot.eff.org/) 的 Nginx 插件为宿主机自己的 Nginx 签发证书做 TLS 终止再反代到这个 compose 暴露的 80 端口；或者把证书挂载进 `frontend` 容器、在 `nginx.conf` 里加 `listen 443 ssl`。域名和证书策略因人而异，这里不代为决定。
