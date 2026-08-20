@@ -9,6 +9,10 @@
 | 前端 | Vue 3 + Vite + ECharts + Pinia |
 | 生产部署（可选） | Docker Compose + Nginx |
 
+## 主页
+
+![职业画像分析平台主页](assets/homepage.png)
+
 ## 环境要求
 
 - **Python** 3.13+
