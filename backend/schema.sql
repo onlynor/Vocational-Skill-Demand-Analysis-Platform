@@ -140,3 +140,17 @@ CREATE TABLE IF NOT EXISTS user_profile (
   UNIQUE KEY uk_user (user_id),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户个人求职画像';
+
+-- -----------------------------------------------------------
+-- 10. 用户 AI 顾问配置（OpenAI 兼容接口，用户自带 key）
+-- -----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_ai_config (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  user_id       INT           NOT NULL COMMENT '关联 users.id',
+  api_base_url  VARCHAR(255)  DEFAULT NULL COMMENT 'OpenAI 兼容接口地址，如 https://api.deepseek.com/v1',
+  api_key       VARCHAR(255)  DEFAULT NULL COMMENT '用户自己的 API Key，仅服务端使用，不返回前端',
+  model         VARCHAR(128)  DEFAULT NULL COMMENT '模型名称',
+  updated_at    DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_ai_user (user_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户 AI 顾问配置';
