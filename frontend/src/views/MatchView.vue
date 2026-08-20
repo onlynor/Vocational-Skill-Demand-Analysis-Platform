@@ -37,6 +37,21 @@ async function doMatch() {
     loading.value = false
   }
 }
+
+// Prefill from the saved profile (个人中心) on first entry — still fully
+// editable afterward, just saves retyping skills every time.
+async function prefillFromProfile() {
+  try {
+    const { data } = await api.get('/account/me')
+    if (data.skills?.length) {
+      skills.value = [...data.skills]
+    }
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+prefillFromProfile()
 </script>
 
 <template>
@@ -71,7 +86,7 @@ async function doMatch() {
           <h3 class="section-title">匹配结果</h3>
           <span class="result-count">共 {{ results.length }} 条 · 按匹配技能数排序</span>
         </div>
-        <div v-if="results.length" class="table-wrap">
+        <div v-if="results.length" class="table-wrap" :key="results.length + '-' + (results[0]?.title || '')">
           <table>
             <thead>
               <tr>
@@ -110,7 +125,8 @@ async function doMatch() {
   max-width: 1280px;
 }
 .panel {
-  padding: 24px 28px;
+  padding: var(--space-6) 28px;
+  transition: box-shadow var(--transition-spring);
 }
 .section-title {
   font-size: var(--font-size-lg);
@@ -145,16 +161,20 @@ async function doMatch() {
 }
 .ghost-btn {
   height: 42px;
-  padding: 0 20px;
+  padding: 0 22px;
   background: var(--surface-soft);
   color: var(--text-color);
   border: 1px solid var(--border-color-strong);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-full);
   font-size: var(--font-size-base);
+  transition: border-color var(--transition), color var(--transition), transform var(--transition-fast);
 }
 .ghost-btn:hover {
   border-color: var(--primary-color);
   color: var(--primary-hover);
+}
+.ghost-btn:active {
+  transform: scale(0.97);
 }
 
 .tags {
@@ -179,16 +199,20 @@ async function doMatch() {
   margin-top: 6px;
   height: 44px;
   padding: 0 36px;
-  background: var(--primary-color);
+  background: var(--gradient-primary);
   color: #fff;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-full);
   font-size: var(--font-size-md);
   font-weight: 600;
-  transition: background var(--transition);
+  box-shadow: var(--glow-primary);
+  transition: filter var(--transition), transform var(--transition-fast), box-shadow var(--transition);
 }
 .match-btn:hover:not(:disabled) {
-  background: var(--primary-hover);
+  filter: brightness(1.06);
+}
+.match-btn:active:not(:disabled) {
+  transform: scale(0.98);
 }
 .match-btn:disabled {
   opacity: 0.5;
@@ -213,7 +237,8 @@ async function doMatch() {
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  animation: fade-up 0.5s var(--ease-spring) both;
 }
 table {
   width: 100%;
@@ -250,5 +275,5 @@ td.salary {
   font-size: var(--font-size-xs);
 }
 .badge.match { background: var(--primary-soft); color: var(--primary-hover); }
-.badge.miss { background: var(--accent-orange-soft); color: #c77f12; }
+.badge.miss { background: var(--accent-orange-soft); color: var(--accent-orange); }
 </style>

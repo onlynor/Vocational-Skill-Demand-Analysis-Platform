@@ -39,6 +39,7 @@ async function handleSubmit() {
     <div class="login-bg">
       <span class="blob blob-a"></span>
       <span class="blob blob-b"></span>
+      <span class="blob blob-c"></span>
       <span class="grid-overlay"></span>
     </div>
 
@@ -122,20 +123,38 @@ async function handleSubmit() {
 .blob {
   position: absolute;
   border-radius: 50%;
-  filter: blur(80px);
+  filter: blur(90px);
   opacity: 0.45;
+  animation: drift 16s ease-in-out infinite alternate;
 }
 .blob-a {
-  width: 480px; height: 480px;
+  width: 520px; height: 520px;
   background: #4fc08d;
-  top: -120px; left: -120px;
-  opacity: 0.22;
+  top: -140px; left: -140px;
+  opacity: 0.26;
 }
 .blob-b {
-  width: 420px; height: 420px;
+  width: 460px; height: 460px;
   background: #2f7ad4;
-  bottom: -140px; right: -100px;
-  opacity: 0.22;
+  bottom: -160px; right: -120px;
+  opacity: 0.24;
+  animation-duration: 20s;
+  animation-delay: -4s;
+}
+.blob-c {
+  width: 360px; height: 360px;
+  background: #8b5cf6;
+  top: 40%; left: 50%;
+  opacity: 0.14;
+  animation-duration: 24s;
+  animation-delay: -9s;
+}
+@keyframes drift {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(40px, 30px) scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .blob { animation: none; }
 }
 .grid-overlay {
   position: absolute;
@@ -153,10 +172,25 @@ async function handleSubmit() {
   z-index: 1;
   width: 448px;
   max-width: 100%;
-  padding: 40px 44px 28px;
-  background: var(--surface-color);
-  border-radius: var(--radius-lg);
+  padding: 44px 44px 28px;
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.8);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.8);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-login);
+  animation: card-rise var(--transition-spring);
+}
+
+@keyframes card-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 /* ---- brand ---- */
@@ -165,11 +199,14 @@ async function handleSubmit() {
   margin-bottom: 28px;
 }
 .brand-title {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text-color);
-  margin-top: 14px;
-  letter-spacing: 1px;
+  font-size: 24px;
+  font-weight: 800;
+  margin-top: 16px;
+  letter-spacing: 0.5px;
+  background: linear-gradient(120deg, var(--text-color) 0%, var(--primary-hover) 55%, var(--accent-blue) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 .brand-subtitle {
   margin-top: 6px;
@@ -278,20 +315,22 @@ async function handleSubmit() {
   width: 100%;
   height: 46px;
   margin-top: 6px;
-  background: var(--primary-color);
+  background: var(--gradient-primary);
   color: #fff;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-full);
   font-size: var(--font-size-md);
   font-weight: 600;
-  letter-spacing: 2px;
-  transition: background var(--transition), transform var(--transition);
+  letter-spacing: 1px;
+  box-shadow: var(--glow-primary);
+  transition: filter var(--transition), transform var(--transition-fast), box-shadow var(--transition);
 }
 .submit:hover:not(:disabled) {
-  background: var(--primary-hover);
+  filter: brightness(1.06);
+  box-shadow: 0 10px 30px rgba(47, 158, 212, 0.4);
 }
 .submit:active:not(:disabled) {
-  transform: scale(0.99);
+  transform: scale(0.98);
 }
 .submit:disabled {
   opacity: 0.55;
