@@ -1,19 +1,86 @@
 <script setup>
+import { ref, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import BrandLogo from '@/components/common/BrandLogo.vue'
-
-defineEmits(['logout'])
 
 const auth = useAuthStore()
 
 const menus = [
-  { to: '/jobs', label: '职业画像', icon: 'profile' },
   { to: '/match', label: '技能匹配', icon: 'match' },
+  { to: '/jobs', label: '职业画像', icon: 'profile' },
 ]
+
+/* ---- draggable sidebar width ----
+   The sidebar's own width and App.vue's `.main { margin-left }` both read
+   the same `--sidebar-width` custom property (defined in variables.css), so
+   overriding it on <html> keeps both in sync automatically — no store or
+   prop-drilling between the two components needed. */
+const SIDEBAR_WIDTH_KEY = 'sidebarWidth'
+const SIDEBAR_MIN_WIDTH = 180
+const SIDEBAR_MAX_WIDTH = 360
+const SIDEBAR_DEFAULT_WIDTH = 232
+
+function clampWidth(px) {
+  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, px))
+}
+
+function applyWidth(px) {
+  document.documentElement.style.setProperty('--sidebar-width', px + 'px')
+}
+
+const sidebarWidth = ref(
+  clampWidth(parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT_WIDTH)
+)
+applyWidth(sidebarWidth.value)
+
+let dragging = false
+let dragStartX = 0
+let dragStartWidth = 0
+
+function startDrag(e) {
+  e.preventDefault()
+  dragging = true
+  dragStartX = e.clientX
+  dragStartWidth = sidebarWidth.value
+  document.addEventListener('mousemove', onDrag)
+  document.addEventListener('mouseup', stopDrag)
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+}
+
+function onDrag(e) {
+  if (!dragging) return
+  const next = clampWidth(dragStartWidth + (e.clientX - dragStartX))
+  sidebarWidth.value = next
+  applyWidth(next)
+}
+
+function stopDrag() {
+  if (!dragging) return
+  dragging = false
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+  localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth.value))
+}
+
+onUnmounted(() => {
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
+})
 </script>
 
 <template>
   <aside class="sidebar">
+    <div
+      class="sidebar-resizer"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="调整侧边栏宽度"
+      @mousedown="startDrag"
+    ></div>
+
     <div class="brand">
       <BrandLogo :size="32" />
       <div class="brand-text">
@@ -42,20 +109,18 @@ const menus = [
       </RouterLink>
     </nav>
 
-    <div class="user-area">
+    <RouterLink to="/account" class="user-area" active-class="active" :title="(auth.username || '') + ' · 个人中心'">
       <div class="user-avatar">{{ (auth.username || 'U').charAt(0).toUpperCase() }}</div>
-      <div class="user-meta">
-        <span class="username">{{ auth.username || '未登录' }}</span>
-        <button class="logout-btn" @click="$emit('logout')">退出登录</button>
-      </div>
-    </div>
+    </RouterLink>
   </aside>
 </template>
 
 <style scoped>
 .sidebar {
   width: var(--sidebar-width);
-  background: var(--sidebar-bg);
+  background: var(--glass-sidebar-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
   color: var(--text-on-dark);
   display: flex;
   flex-direction: column;
@@ -64,7 +129,42 @@ const menus = [
   left: 0;
   bottom: 0;
   z-index: 20;
+  border-right: 1px solid var(--border-on-dark);
 }
+
+/* Drag target is just this thin strip straddling the sidebar's right edge —
+   not the whole sidebar — so nav/brand/avatar clicks are never affected.
+   Invisible at rest (no change to the existing look); only a hover/drag
+   state reveals the handle, same affordance pattern as Finder/VS Code. */
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -3px;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 5;
+  user-select: none;
+  touch-action: none;
+}
+.sidebar-resizer::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  transform: translateX(-50%);
+  background: transparent;
+  border-radius: var(--radius-full);
+  transition: background var(--transition-fast), width var(--transition-fast);
+}
+.sidebar-resizer:hover::after,
+.sidebar-resizer:active::after {
+  background: var(--primary-color);
+  width: 4px;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -78,6 +178,13 @@ const menus = [
   display: flex;
   flex-direction: column;
   line-height: 1.2;
+  min-width: 0;
+}
+.brand-name,
+.brand-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .brand-name {
   font-size: var(--font-size-md);
@@ -90,41 +197,37 @@ const menus = [
 
 .nav {
   flex: 1;
-  padding: 16px 12px;
+  padding: var(--space-5) var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .nav-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
+  padding: 11px 14px;
+  border-radius: var(--radius-full);
   color: var(--text-on-dark-muted);
   font-size: var(--font-size-base);
   font-weight: 500;
-  transition: background var(--transition), color var(--transition);
+  min-width: 0;
+  transition: background var(--transition), color var(--transition), box-shadow var(--transition-spring);
+}
+.nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .nav-item:hover {
   background: var(--sidebar-bg-hover);
   color: var(--text-on-dark);
 }
 .nav-item.active {
-  background: rgba(79, 192, 141, 0.16);
+  background: var(--gradient-primary);
   color: #fff;
-  position: relative;
-}
-.nav-item.active::before {
-  content: '';
-  position: absolute;
-  left: -12px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 22px;
-  background: var(--primary-color);
-  border-radius: 0 3px 3px 0;
+  font-weight: 600;
+  box-shadow: var(--glow-primary);
 }
 .ic {
   flex-shrink: 0;
@@ -134,16 +237,23 @@ const menus = [
 .user-area {
   display: flex;
   align-items: center;
-  gap: 12px;
   padding: 16px 20px;
   border-top: 1px solid var(--border-on-dark);
   flex-shrink: 0;
+  transition: background var(--transition);
+}
+.user-area:hover {
+  background: var(--sidebar-bg-hover);
+}
+.user-area.active .user-avatar {
+  box-shadow: var(--glow-primary), 0 0 0 2px rgba(255, 255, 255, 0.5);
 }
 .user-avatar {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--primary-color);
+  background: var(--gradient-primary);
+  box-shadow: var(--glow-primary);
   color: #fff;
   display: flex;
   align-items: center;
@@ -151,29 +261,9 @@ const menus = [
   font-weight: 700;
   font-size: var(--font-size-base);
   flex-shrink: 0;
+  transition: box-shadow var(--transition), transform var(--transition-fast);
 }
-.user-meta {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.username {
-  font-size: var(--font-size-sm);
-  color: var(--text-on-dark);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.logout-btn {
-  align-self: flex-start;
-  margin-top: 2px;
-  padding: 2px 0;
-  background: transparent;
-  border: none;
-  color: var(--text-on-dark-muted);
-  font-size: var(--font-size-xs);
-}
-.logout-btn:hover {
-  color: #fff;
+.user-area:hover .user-avatar {
+  transform: scale(1.06);
 }
 </style>

@@ -38,10 +38,11 @@ AGENTS.md
 .opencode/
 .claude/
 .aider*
-
+!README.md
 # 本地生成产物
 *.local
 
+*.md
 # 二进制文档（申请书模板不需要提交）
 *.doc
 *.docx

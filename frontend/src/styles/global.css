@@ -27,6 +27,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  transition: background-color var(--transition), color var(--transition);
 }
 
 a {
@@ -55,11 +56,11 @@ ul {
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.18);
+  background: var(--scrollbar-thumb);
   border-radius: var(--radius-full);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--scrollbar-thumb-hover);
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -68,10 +69,17 @@ ul {
 /* ==========================================================================
    Shared utility classes
    ========================================================================== */
+/* Content surfaces are solid, not glass: backdrop-filter is reserved for
+   chrome (sidebar/topbar/login) where it sits over a moving/ambient
+   background. Blurring every card on a chart-heavy page is expensive to
+   repaint and buys nothing visually since there's nothing but flat gray
+   behind these cards anyway. */
 .card-surface {
   background: var(--surface-color);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-color);
+  transition: background-color var(--transition), border-color var(--transition);
 }
 
 .text-secondary {
@@ -84,3 +92,47 @@ ul {
   margin: 0;
   padding: 0;
 }
+
+/* ==========================================================================
+   Page transition — simple fade + rise, used for route changes in App.vue
+   ========================================================================== */
+.page-enter-active {
+  transition: opacity var(--transition), transform var(--transition);
+}
+.page-leave-active {
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+/* ==========================================================================
+   Entrance motion — staggered fade-up used by dashboard grids (stat cards,
+   chart cards) so content arrives with a bit of life instead of popping in
+   all at once.
+   ========================================================================== */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stagger-in > * {
+  animation: fade-up 0.55s var(--ease-spring) both;
+}
+.stagger-in > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger-in > *:nth-child(2) { animation-delay: 0.08s; }
+.stagger-in > *:nth-child(3) { animation-delay: 0.14s; }
+.stagger-in > *:nth-child(4) { animation-delay: 0.2s; }
+.stagger-in > *:nth-child(5) { animation-delay: 0.26s; }
+.stagger-in > *:nth-child(6) { animation-delay: 0.32s; }

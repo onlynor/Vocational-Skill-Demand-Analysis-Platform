@@ -25,13 +25,19 @@ defineProps({
 .chart-card {
   display: flex;
   flex-direction: column;
-  padding: 24px;
+  padding: var(--space-6);
+  border-radius: var(--radius-xl);
+  transition: box-shadow var(--transition-spring), transform var(--transition-spring);
+}
+.chart-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
 }
 .chart-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
   flex-shrink: 0;
 }
 .chart-title {
