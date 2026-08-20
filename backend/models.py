@@ -112,3 +112,21 @@ class UserProfile(Base):
     salary_max = Column(Integer)
     skills = Column(JSON)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class UserAIConfig(Base):
+    """Per-user OpenAI-compatible endpoint settings for the AI advisor.
+
+    Kept in its own table rather than on UserProfile so the API key never
+    rides along in the career-profile response. The key is stored as-is
+    because the server must replay it to the user's chosen endpoint; it is
+    never returned to the browser (the API reports only `has_api_key`).
+    """
+    __tablename__ = "user_ai_config"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    api_base_url = Column(String(255))
+    api_key = Column(String(255))
+    model = Column(String(128))
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

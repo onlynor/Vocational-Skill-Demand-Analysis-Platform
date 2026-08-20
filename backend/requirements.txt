@@ -14,3 +14,5 @@ bcrypt==4.2.1
 pydantic==2.13.4
 pandas==3.0.3
 jieba==0.42.1
+# Used by the AI advisor to call the user-configured OpenAI-compatible endpoint
+requests==2.34.2

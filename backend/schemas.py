@@ -89,3 +89,78 @@ class UserProfileIn(BaseModel):
 
 class UserProfileOut(UserProfileIn):
     username: str
+
+
+class SkillTreeSkill(BaseModel):
+    name: str
+    value: int
+
+
+class SkillTreeDirection(BaseModel):
+    name: str
+    job_count: int
+    core_skills: list[SkillTreeSkill]
+    extended_skills: list[SkillTreeSkill]
+
+
+class SkillTreeResponse(BaseModel):
+    industry: str
+    supported: bool
+    directions: list[SkillTreeDirection]
+
+
+class AIConfigIn(BaseModel):
+    api_base_url: str = Field(min_length=1, max_length=255)
+    model: str = Field(min_length=1, max_length=128)
+    # Optional on update: omitting it keeps the stored key, so the UI can
+    # show "已配置" without ever holding the real key client-side.
+    api_key: Optional[str] = Field(default=None, max_length=255)
+
+
+class AIConfigOut(BaseModel):
+    api_base_url: Optional[str] = None
+    model: Optional[str] = None
+    has_api_key: bool = False
+
+
+class AdvisorMessage(BaseModel):
+    role: str
+    content: str
+
+
+class AdvisorChatRequest(BaseModel):
+    messages: list[AdvisorMessage] = Field(min_length=1)
+
+
+class AdvisorCitation(BaseModel):
+    tool: str
+    args: dict
+
+
+class AdvisorChatResponse(BaseModel):
+    reply: str
+    citations: list[AdvisorCitation] = Field(default_factory=list)
+
+
+class AIProbeRequest(BaseModel):
+    """Optional overrides for connection test / model listing.
+
+    Any field left out falls back to what's already stored, so the user can
+    probe an endpoint before saving it, or re-probe a saved one without
+    re-typing the key.
+    """
+    api_base_url: Optional[str] = Field(default=None, max_length=255)
+    api_key: Optional[str] = Field(default=None, max_length=255)
+    model: Optional[str] = Field(default=None, max_length=128)
+
+
+class AIModelsResponse(BaseModel):
+    models: list[str]
+
+
+class AITestResponse(BaseModel):
+    ok: bool
+    model: Optional[str] = None
+    latency_ms: Optional[int] = None
+    supports_tools: bool = False
+    message: str
