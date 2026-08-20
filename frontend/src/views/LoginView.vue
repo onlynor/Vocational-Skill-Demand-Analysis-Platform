@@ -12,11 +12,37 @@ const error = ref('')
 const showPwd = ref(false)
 const form = reactive({ username: '', password: '' })
 
+// FastAPI returns 422 `detail` as an ARRAY of validation objects, not a
+// string — rendering it directly showed "[object Object]". Turn whatever
+// shape came back into one readable sentence.
+function readableError(e) {
+  const d = e.response?.data?.detail
+  if (typeof d === 'string') return d
+  if (Array.isArray(d) && d.length) {
+    const first = d[0]
+    const field = Array.isArray(first?.loc) ? first.loc[first.loc.length - 1] : ''
+    const label = { username: '用户名', password: '密码' }[field] || field || '输入'
+    const msg = first?.msg || ''
+    if (/at least (\d+)/.test(msg)) return `${label}长度不能少于 ${msg.match(/at least (\d+)/)[1]} 个字符`
+    if (/at most (\d+)/.test(msg)) return `${label}长度不能超过 ${msg.match(/at most (\d+)/)[1]} 个字符`
+    return `${label}格式不正确`
+  }
+  if (e.code === 'ECONNABORTED') return '请求超时，请检查后端服务是否已启动'
+  if (!e.response) return '无法连接服务器，请确认后端已启动（默认 http://localhost:8000）'
+  return '操作失败，请重试'
+}
+
 async function handleSubmit() {
   error.value = ''
-  if (!form.username || !form.password) {
-    error.value = '请输入用户名和密码'
-    return
+  const u = form.username.trim()
+  if (!u) { error.value = '请输入用户名'; return }
+  if (!form.password) { error.value = '请输入密码'; return }
+  // Mirror the server-side constraints so users get told immediately
+  // instead of round-tripping for a 422.
+  if (mode.value === 'register') {
+    if (u.length < 3) { error.value = '用户名至少 3 个字符'; return }
+    if (u.length > 32) { error.value = '用户名最多 32 个字符'; return }
+    if (form.password.length < 6) { error.value = '密码至少 6 个字符'; return }
   }
   loading.value = true
   try {
@@ -27,7 +53,7 @@ async function handleSubmit() {
     }
     router.push('/jobs')
   } catch (e) {
-    error.value = e.response?.data?.detail || '操作失败，请重试'
+    error.value = readableError(e)
   } finally {
     loading.value = false
   }
