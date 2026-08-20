@@ -19,6 +19,18 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/skill-tree',
+    name: 'skill-tree',
+    component: () => import('../views/SkillTreeView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/advisor',
+    name: 'advisor',
+    component: () => import('../views/AdvisorView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/account',
     name: 'account',
     component: () => import('../views/AccountView.vue'),

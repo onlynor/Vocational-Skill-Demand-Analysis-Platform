@@ -8,6 +8,8 @@ const route = useRoute()
 const pageMeta = {
   '/jobs': { title: '职业画像', desc: '招聘数据采集与多维度统计分析' },
   '/match': { title: '技能匹配', desc: '输入已有技能，推荐匹配岗位并分析差距' },
+  '/skill-tree': { title: '技能树', desc: '计算机/互联网行业职位技能图谱' },
+  '/advisor': { title: 'AI职业顾问', desc: '基于平台真实招聘数据的智能问答' },
   '/account': { title: '个人中心', desc: '管理你的求职画像与账户' },
 }
 </script>
