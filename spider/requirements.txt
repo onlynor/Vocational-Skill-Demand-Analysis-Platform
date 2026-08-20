@@ -1,0 +1,8 @@
+# Dependencies for the Scrapy crawler only (spider/). This is an offline
+# batch job, not part of the deployed web service — kept separate from
+# backend/requirements.txt so the production API install doesn't need it.
+# Install with:
+#   uv pip install -r spider/requirements.txt --python .venv/bin/python
+Scrapy==2.17.0
+PyMySQL==1.2.0
+python-dotenv==1.2.2

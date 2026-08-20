@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from collections import Counter
+from ..auth import get_current_username
 from ..database import get_db
 from ..schemas import (
     SkillRankItem, SkillSalaryItem, CityDemandItem,
@@ -10,23 +10,28 @@ from ..schemas import (
 )
 from ..models import CleanedJob, JobSkill, SkillDict, JobCategory
 
-router = APIRouter(prefix="/api/profile", tags=["职业画像"])
+# Router-level dependency: every /api/profile/* route requires a valid JWT.
+router = APIRouter(
+    prefix="/api/profile",
+    tags=["职业画像"],
+    dependencies=[Depends(get_current_username)],
+)
 
 
 @router.get("/skills/rank", response_model=list[SkillRankItem])
 def skill_rank(db: Session = Depends(get_db)):
     rows = (
-        db.query(JobSkill.skill, func.sum(JobSkill.frequency).label("total"))
-        .group_by(JobSkill.skill)
+        db.query(JobSkill.skill, func.sum(JobSkill.frequency).label("total"), SkillDict.category)
+        .outerjoin(SkillDict, SkillDict.skill == JobSkill.skill)
+        .group_by(JobSkill.skill, SkillDict.category)
         .order_by(func.sum(JobSkill.frequency).desc())
         .limit(20)
         .all()
     )
-    result = []
-    for skill, total in rows:
-        cat = db.query(SkillDict.category).filter(SkillDict.skill == skill).scalar()
-        result.append(SkillRankItem(skill=skill, category=cat or "", frequency=total))
-    return result
+    return [
+        SkillRankItem(skill=skill, category=cat or "", frequency=total)
+        for skill, total, cat in rows
+    ]
 
 
 @router.get("/skills/salary", response_model=list[SkillSalaryItem])
@@ -75,24 +80,21 @@ def education_distribution(db: Session = Depends(get_db)):
 
 @router.post("/skills/match", response_model=list[SkillMatchItem])
 def skill_match(body: SkillMatchRequest, db: Session = Depends(get_db)):
-    if not body.skills:
+    user_skills = list({s.strip() for s in body.skills if s.strip()})
+    if not user_skills:
         return []
 
-    user_skills_lower = {s.lower() for s in body.skills}
-
-    # Step 1: find which job_skill entries match user input (case-insensitive)
-    all_skill_rows = db.query(JobSkill.cleaned_job_id, JobSkill.skill).all()
-    # Build per-job skill sets and collect matching job IDs
-    job_skills_map: dict[int, set[str]] = {}
-    matching_job_ids: set[int] = set()
-
-    for job_id, skill in all_skill_rows:
-        job_skills_map.setdefault(job_id, set()).add(skill)
-
-    for job_id, skills in job_skills_map.items():
-        if {s.lower() for s in skills} & user_skills_lower:
-            matching_job_ids.add(job_id)
-
+    # Step 1: use the indexed `skill` column to find matching job IDs directly in
+    # SQL, instead of pulling every job_skill row into memory on each request.
+    # cleaned_jobs/job_skill use utf8mb4_unicode_ci, so equality is already
+    # case-insensitive at the DB level.
+    matching_job_ids = {
+        row[0] for row in
+        db.query(JobSkill.cleaned_job_id)
+        .filter(JobSkill.skill.in_(user_skills))
+        .distinct()
+        .all()
+    }
     if not matching_job_ids:
         return []
 
@@ -112,16 +114,29 @@ def skill_match(body: SkillMatchRequest, db: Session = Depends(get_db)):
         else:
             return []
     jobs = query.all()
+    if not jobs:
+        return []
 
-    # Step 3: build results
+    # Step 3: fetch full skill sets only for the jobs we're actually returning,
+    # not the entire job_skill table.
+    job_ids = [j.id for j in jobs]
+    skill_rows = (
+        db.query(JobSkill.cleaned_job_id, JobSkill.skill)
+        .filter(JobSkill.cleaned_job_id.in_(job_ids))
+        .all()
+    )
+    job_skills_map: dict[int, set[str]] = {}
+    for job_id, skill in skill_rows:
+        job_skills_map.setdefault(job_id, set()).add(skill)
+
+    user_skills_lower = {s.lower() for s in user_skills}
+
     results = []
     for job in jobs:
         job_skills = job_skills_map.get(job.id, set())
         if not job_skills:
             continue
-        job_skills_lower = {s.lower() for s in job_skills}
-        matched_lower = user_skills_lower & job_skills_lower
-        matched = {s for s in job_skills if s.lower() in matched_lower}
+        matched = {s for s in job_skills if s.lower() in user_skills_lower}
         missing = job_skills - matched
         results.append({
             "title": job.title,
@@ -146,27 +161,27 @@ def skill_match(body: SkillMatchRequest, db: Session = Depends(get_db)):
 
 @router.get("/jobs/tree", response_model=list[JobCategoryItem])
 def job_tree(db: Session = Depends(get_db)):
-    industries = (
-        db.query(JobCategory)
-        .filter(JobCategory.parent_id.is_(None))
-        .order_by(JobCategory.sort_order)
-        .all()
-    )
+    # Fetch the whole (small) category table once and build the tree in memory,
+    # instead of issuing one child-lookup query per industry.
+    all_categories = db.query(JobCategory).order_by(JobCategory.sort_order).all()
     title_counts = dict(
         db.query(CleanedJob.title, func.count(CleanedJob.id))
         .group_by(CleanedJob.title).all()
     )
+
+    children_by_parent: dict[int, list[JobCategory]] = {}
+    industries = []
+    for cat in all_categories:
+        if cat.parent_id is None:
+            industries.append(cat)
+        else:
+            children_by_parent.setdefault(cat.parent_id, []).append(cat)
+
     tree = []
     for ind in industries:
-        children = (
-            db.query(JobCategory)
-            .filter(JobCategory.parent_id == ind.id)
-            .order_by(JobCategory.sort_order)
-            .all()
-        )
         jobs = [
             JobTreeLeaf(name=ch.name, count=title_counts.get(ch.name, 0))
-            for ch in children
+            for ch in children_by_parent.get(ind.id, [])
             if title_counts.get(ch.name, 0) > 0
         ]
         total = sum(j.count for j in jobs)
@@ -177,34 +192,61 @@ def job_tree(db: Session = Depends(get_db)):
 
 @router.get("/jobs/{title}", response_model=JobProfileItem)
 def job_profile(title: str, db: Session = Depends(get_db)):
-    jobs = db.query(CleanedJob).filter(CleanedJob.title == title).all()
-    if not jobs:
+    # Aggregate in SQL instead of pulling every matching row (including the
+    # large `requirements` TEXT column) into Python for manual counting.
+    job_count, avg_sal, sal_min, sal_max = (
+        db.query(
+            func.count(CleanedJob.id),
+            func.avg(CleanedJob.salary_avg),
+            func.min(CleanedJob.salary_min),
+            func.max(CleanedJob.salary_max),
+        )
+        .filter(CleanedJob.title == title)
+        .one()
+    )
+    if not job_count:
         raise HTTPException(status_code=404, detail=f"未找到职位: {title}")
 
-    job_ids = [j.id for j in jobs]
-    job_count = len(jobs)
+    avg_salary = int(avg_sal) if avg_sal else 0
+    salary_min = sal_min or 0
+    salary_max = sal_max or 0
 
-    salaries = [j.salary_avg for j in jobs if j.salary_avg]
-    avg_salary = int(sum(salaries) / len(salaries)) if salaries else 0
-    salary_min = min((j.salary_min for j in jobs if j.salary_min), default=0)
-    salary_max = max((j.salary_max for j in jobs if j.salary_max), default=0)
+    city_rows = (
+        db.query(CleanedJob.city, func.count(CleanedJob.id))
+        .filter(CleanedJob.title == title, CleanedJob.city.isnot(None))
+        .group_by(CleanedJob.city)
+        .order_by(func.count(CleanedJob.id).desc())
+        .all()
+    )
+    cities = [{"name": c, "value": n} for c, n in city_rows]
 
-    city_counter = Counter(j.city for j in jobs if j.city)
-    cities = [{"name": c, "value": n} for c, n in city_counter.most_common()]
-
-    edu_counter = Counter(j.education for j in jobs if j.education)
-    education = [{"name": e, "value": n} for e, n in edu_counter.most_common()]
+    edu_rows = (
+        db.query(CleanedJob.education, func.count(CleanedJob.id))
+        .filter(CleanedJob.title == title, CleanedJob.education.isnot(None))
+        .group_by(CleanedJob.education)
+        .order_by(func.count(CleanedJob.id).desc())
+        .all()
+    )
+    education = [{"name": e, "value": n} for e, n in edu_rows]
 
     skills = (
         db.query(JobSkill.skill, func.sum(JobSkill.frequency).label("total"))
-        .filter(JobSkill.cleaned_job_id.in_(job_ids))
+        .join(CleanedJob, JobSkill.cleaned_job_id == CleanedJob.id)
+        .filter(CleanedJob.title == title)
         .group_by(JobSkill.skill)
         .order_by(func.sum(JobSkill.frequency).desc())
         .limit(20).all()
     )
     top_skills = [{"name": s, "value": int(f)} for s, f in skills]
 
-    companies = sorted({j.company for j in jobs if j.company})
+    company_rows = (
+        db.query(CleanedJob.company)
+        .filter(CleanedJob.title == title, CleanedJob.company.isnot(None))
+        .distinct()
+        .order_by(CleanedJob.company)
+        .all()
+    )
+    companies = [c for (c,) in company_rows]
 
     return JobProfileItem(
         title=title,

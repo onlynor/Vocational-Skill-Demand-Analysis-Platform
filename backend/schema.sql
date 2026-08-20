@@ -122,3 +122,21 @@ CREATE TABLE IF NOT EXISTS job_category (
   FOREIGN KEY (parent_id) REFERENCES job_category(id) ON DELETE CASCADE,
   INDEX idx_parent (parent_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='职位分类（二级树）';
+
+-- -----------------------------------------------------------
+-- 9. 用户个人求职画像（手动填写，区别于岗位市场统计数据）
+-- -----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_profile (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  user_id       INT           NOT NULL COMMENT '关联 users.id',
+  target_title  VARCHAR(128)  DEFAULT NULL COMMENT '期望职位名称',
+  city          VARCHAR(32)   DEFAULT NULL COMMENT '期望城市',
+  education     VARCHAR(16)   DEFAULT NULL COMMENT '学历',
+  experience    VARCHAR(32)   DEFAULT NULL COMMENT '工作经验',
+  salary_min    INT           DEFAULT NULL COMMENT '期望最低月薪',
+  salary_max    INT           DEFAULT NULL COMMENT '期望最高月薪',
+  skills        JSON          DEFAULT NULL COMMENT '技能列表，字符串数组',
+  updated_at    DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_user (user_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户个人求职画像';

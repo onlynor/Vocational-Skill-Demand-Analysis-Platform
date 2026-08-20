@@ -1,15 +1,17 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 
 class UserRegister(BaseModel):
-    username: str
-    password: str
+    # max_length matches users.username VARCHAR(32) — without this, an
+    # over-long value hit MySQL's own length error instead of a clean 422.
+    username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=6, max_length=128)
 
 
 class UserLogin(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=32)
+    password: str = Field(min_length=1, max_length=128)
 
 
 class TokenResponse(BaseModel):
@@ -73,3 +75,17 @@ class JobProfileItem(BaseModel):
     education: list[dict]
     top_skills: list[dict]
     companies: list[str]
+
+
+class UserProfileIn(BaseModel):
+    target_title: Optional[str] = Field(default=None, max_length=128)
+    city: Optional[str] = Field(default=None, max_length=32)
+    education: Optional[str] = Field(default=None, max_length=16)
+    experience: Optional[str] = Field(default=None, max_length=32)
+    salary_min: Optional[int] = None
+    salary_max: Optional[int] = None
+    skills: list[str] = Field(default_factory=list)
+
+
+class UserProfileOut(UserProfileIn):
+    username: str

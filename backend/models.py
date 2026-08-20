@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, ForeignKey, func,
+    Column, Integer, String, Text, DateTime, ForeignKey, JSON, func,
 )
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -94,3 +94,21 @@ class User(Base):
     username = Column(String(32), unique=True, nullable=False)
     password_hash = Column(String(256), nullable=False)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class UserProfile(Base):
+    """A user's self-reported job-seeking profile (skills/target city/etc.),
+    separate from job-market aggregate data in CleanedJob/JobSkill. One row
+    per user; used to prefill the skill-match page."""
+    __tablename__ = "user_profile"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    target_title = Column(String(128))
+    city = Column(String(32))
+    education = Column(String(16))
+    experience = Column(String(32))
+    salary_min = Column(Integer)
+    salary_max = Column(Integer)
+    skills = Column(JSON)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
