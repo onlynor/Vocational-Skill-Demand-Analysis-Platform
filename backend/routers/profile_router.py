@@ -7,6 +7,7 @@ from ..schemas import (
     SkillRankItem, SkillSalaryItem, CityDemandItem,
     EducationPieItem, SkillMatchRequest, SkillMatchItem,
     JobCategoryItem, JobTreeLeaf, JobProfileItem,
+    SkillTreeSkill, SkillTreeDirection, SkillTreeResponse,
 )
 from ..models import CleanedJob, JobSkill, SkillDict, JobCategory
 
@@ -188,6 +189,111 @@ def job_tree(db: Session = Depends(get_db)):
         if total >= 10:
             tree.append(JobCategoryItem(category=ind.name, jobs=jobs))
     return tree
+
+
+MIN_TITLE_JOB_COUNT = 5
+CORE_SKILLS_PER_DIRECTION = 5
+MAX_SKILLS_PER_DIRECTION = 20
+
+# Industries with a hand-curated TITLE_TO_DIRECTION grouping. The endpoint
+# still accepts any industry name (reserving the interface for when more get
+# curated) but returns supported=False + an empty direction list for the
+# rest, rather than silently falling back to one-title-per-direction —
+# that fallback would look like a half-finished feature instead of a
+# clearly-not-built-yet one.
+SUPPORTED_INDUSTRIES = {"计算机/互联网"}
+
+# Groups the real job titles under 计算机/互联网 into broader career
+# directions, purely for display — every title/count/skill/frequency below
+# still comes straight out of the database; this dict just decides which
+# bucket each real title's numbers get rolled up into.
+TITLE_TO_DIRECTION: dict[str, str] = {
+    "Java开发": "后端开发方向", "Python开发": "后端开发方向", "Golang开发": "后端开发方向",
+    "C++开发": "后端开发方向", "后端开发": "后端开发方向", "全栈开发": "后端开发方向", "DBA": "后端开发方向",
+    "前端开发": "前端开发方向",
+    "Android开发": "移动/嵌入式开发方向", "嵌入式软件工程师": "移动/嵌入式开发方向",
+    "软件测试": "测试方向", "自动化测试": "测试方向", "测试开发": "测试方向", "硬件测试工程师": "测试方向",
+    "运维工程师": "运维与安全方向", "网络安全": "运维与安全方向",
+    "安全运维工程师": "运维与安全方向", "技术支持工程师": "运维与安全方向",
+    "算法工程师": "数据与算法方向", "数据分析": "数据与算法方向", "数据开发": "数据与算法方向",
+    "产品经理": "产品与设计方向", "产品运营": "产品与设计方向", "UI设计师": "产品与设计方向",
+    "游戏策划": "游戏方向", "游戏运营": "游戏方向", "游戏测试": "游戏方向",
+    "游戏主播": "游戏方向", "游戏陪玩": "游戏方向", "游戏开发": "游戏方向",
+    "技术经理": "技术管理方向", "技术总监": "技术管理方向",
+}
+
+
+@router.get("/skills/tree", response_model=SkillTreeResponse)
+def skills_tree(industry: str = "计算机/互联网", db: Session = Depends(get_db)):
+    industry_row = db.query(JobCategory).filter(
+        JobCategory.parent_id.is_(None),
+        JobCategory.name == industry,
+    ).first()
+    if not industry_row:
+        raise HTTPException(status_code=404, detail=f"未找到行业: {industry}")
+
+    if industry not in SUPPORTED_INDUSTRIES:
+        return SkillTreeResponse(industry=industry, supported=False, directions=[])
+
+    titles = [
+        r[0] for r in db.query(JobCategory.name)
+        .filter(JobCategory.parent_id == industry_row.id)
+        .all()
+    ]
+    if not titles:
+        return SkillTreeResponse(industry=industry, supported=True, directions=[])
+
+    title_counts = dict(
+        db.query(CleanedJob.title, func.count(CleanedJob.id))
+        .filter(CleanedJob.title.in_(titles))
+        .group_by(CleanedJob.title)
+        .all()
+    )
+    # Drop titles with too few postings — a single scraped job's parsed
+    # skills aren't a reliable signal for "what this role requires".
+    qualifying_titles = [t for t in titles if title_counts.get(t, 0) >= MIN_TITLE_JOB_COUNT]
+    if not qualifying_titles:
+        return SkillTreeResponse(industry=industry, supported=True, directions=[])
+
+    skill_rows = (
+        db.query(CleanedJob.title, JobSkill.skill, func.sum(JobSkill.frequency).label("total"))
+        .join(CleanedJob, JobSkill.cleaned_job_id == CleanedJob.id)
+        .filter(CleanedJob.title.in_(qualifying_titles))
+        .group_by(CleanedJob.title, JobSkill.skill)
+        .all()
+    )
+
+    # Roll titles up into directions — a title not yet added to the map
+    # (e.g. a brand-new job title scraped after this dict was written) is
+    # its own direction rather than being silently dropped.
+    direction_job_counts: dict[str, int] = {}
+    for t in qualifying_titles:
+        d = TITLE_TO_DIRECTION.get(t, t)
+        direction_job_counts[d] = direction_job_counts.get(d, 0) + title_counts[t]
+
+    # Small in-memory re-aggregation (one industry's titles × skills — a few
+    # hundred rows at most), not a repeat of the "load everything" antipattern
+    # this codebase avoids elsewhere.
+    skill_totals_by_direction: dict[str, dict[str, int]] = {}
+    for title, skill, total in skill_rows:
+        d = TITLE_TO_DIRECTION.get(title, title)
+        bucket = skill_totals_by_direction.setdefault(d, {})
+        bucket[skill] = bucket.get(skill, 0) + int(total)
+
+    directions = []
+    for d in sorted(direction_job_counts, key=lambda d: direction_job_counts[d], reverse=True):
+        ranked = sorted(
+            skill_totals_by_direction.get(d, {}).items(),
+            key=lambda kv: kv[1], reverse=True,
+        )[:MAX_SKILLS_PER_DIRECTION]
+        directions.append(SkillTreeDirection(
+            name=d,
+            job_count=direction_job_counts[d],
+            core_skills=[SkillTreeSkill(name=s, value=v) for s, v in ranked[:CORE_SKILLS_PER_DIRECTION]],
+            extended_skills=[SkillTreeSkill(name=s, value=v) for s, v in ranked[CORE_SKILLS_PER_DIRECTION:]],
+        ))
+
+    return SkillTreeResponse(industry=industry, supported=True, directions=directions)
 
 
 @router.get("/jobs/{title}", response_model=JobProfileItem)

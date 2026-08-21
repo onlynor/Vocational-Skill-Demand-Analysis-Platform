@@ -8,6 +8,8 @@ const auth = useAuthStore()
 const menus = [
   { to: '/match', label: '技能匹配', icon: 'match' },
   { to: '/jobs', label: '职业画像', icon: 'profile' },
+  { to: '/skill-tree', label: '技能树', icon: 'tree' },
+  { to: '/advisor', label: 'AI职业顾问', icon: 'advisor' },
 ]
 
 /* ---- draggable sidebar width ----
@@ -100,6 +102,16 @@ onUnmounted(() => {
         <svg v-if="m.icon === 'profile'" class="ic" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
           <rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8" />
           <path d="M7 9h10M7 13h6M7 17h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+        </svg>
+        <svg v-else-if="m.icon === 'advisor'" class="ic" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+          <path d="M18 16l.7 2.1L21 19l-2.3.9L18 22l-.7-2.1L15 19l2.3-.9z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+        </svg>
+        <svg v-else-if="m.icon === 'tree'" class="ic" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <circle cx="12" cy="5" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8" />
+          <circle cx="6" cy="19" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8" />
+          <circle cx="18" cy="19" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8" />
+          <path d="M12 7.5v4M12 11.5L6 16.5M12 11.5l6 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
         </svg>
         <svg v-else class="ic" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
           <path d="M12 3v18M3 12h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />

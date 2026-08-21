@@ -23,6 +23,21 @@ const salaryMaxK = ref(null)
 const skills = ref([])
 const skillInput = ref('')
 
+// --- AI advisor config (OpenAI-compatible endpoint, user brings their own) ---
+const aiBaseUrl = ref('')
+const aiModel = ref('')
+const aiKey = ref('')          // only ever holds NEW input; never populated from server
+const aiHasKey = ref(false)
+const aiSaving = ref(false)
+const aiMsg = ref('')
+
+// Model discovery + connection test
+const aiModels = ref([])          // fetched from the endpoint's /models
+const aiLoadingModels = ref(false)
+const aiModelsError = ref('')
+const aiTesting = ref(false)
+const aiTestResult = ref(null)    // {ok, message, supports_tools, latency_ms}
+
 function addSkill() {
   const name = skillInput.value.trim()
   if (name && !skills.value.includes(name)) {
@@ -55,6 +70,111 @@ async function loadProfile() {
   }
 }
 
+async function loadAIConfig() {
+  try {
+    const { data } = await api.get('/account/ai-config')
+    aiBaseUrl.value = data.api_base_url || ''
+    aiModel.value = data.model || ''
+    aiHasKey.value = data.has_api_key
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+// Both probes send whatever is currently typed; the backend falls back to
+// stored values for anything omitted (notably the key, which the form never
+// holds), so this works before OR after saving.
+function aiProbePayload() {
+  const p = {}
+  if (aiBaseUrl.value.trim()) p.api_base_url = aiBaseUrl.value.trim()
+  if (aiKey.value.trim()) p.api_key = aiKey.value.trim()
+  if (aiModel.value.trim()) p.model = aiModel.value.trim()
+  return p
+}
+
+async function fetchAIModels() {
+  aiLoadingModels.value = true
+  aiModelsError.value = ''
+  aiModels.value = []
+  try {
+    const { data } = await api.post('/account/ai-config/models', aiProbePayload(), { timeout: 30000 })
+    aiModels.value = data.models || []
+  } catch (e) {
+    aiModelsError.value = e.response?.data?.detail || '获取模型列表失败'
+    console.error(e)
+  } finally {
+    aiLoadingModels.value = false
+  }
+}
+
+function pickModel(m) {
+  aiModel.value = m
+  aiTestResult.value = null
+}
+
+async function testAIConnection() {
+  aiTesting.value = true
+  aiTestResult.value = null
+  try {
+    const { data } = await api.post('/account/ai-config/test', aiProbePayload(), { timeout: 60000 })
+    aiTestResult.value = data
+  } catch (e) {
+    aiTestResult.value = {
+      ok: false,
+      message: e.response?.data?.detail || '连接测试失败',
+    }
+    console.error(e)
+  } finally {
+    aiTesting.value = false
+  }
+}
+
+async function saveAIConfig() {
+  if (!aiBaseUrl.value.trim() || !aiModel.value.trim()) {
+    aiMsg.value = 'invalid'
+    setTimeout(() => { aiMsg.value = '' }, 2500)
+    return
+  }
+  aiSaving.value = true
+  aiMsg.value = ''
+  try {
+    const payload = {
+      api_base_url: aiBaseUrl.value.trim(),
+      model: aiModel.value.trim(),
+    }
+    // Omit the key when left blank so the stored one is kept.
+    if (aiKey.value.trim()) payload.api_key = aiKey.value.trim()
+    const { data } = await api.put('/account/ai-config', payload)
+    aiHasKey.value = data.has_api_key
+    aiKey.value = ''
+    aiMsg.value = aiHasKey.value ? 'success' : 'nokey'
+  } catch (e) {
+    aiMsg.value = 'error'
+    console.error(e)
+  } finally {
+    aiSaving.value = false
+    setTimeout(() => { aiMsg.value = '' }, 3000)
+  }
+}
+
+async function clearAIConfig() {
+  aiSaving.value = true
+  try {
+    await api.delete('/account/ai-config')
+    aiBaseUrl.value = ''
+    aiModel.value = ''
+    aiKey.value = ''
+    aiHasKey.value = false
+    aiMsg.value = 'cleared'
+  } catch (e) {
+    aiMsg.value = 'error'
+    console.error(e)
+  } finally {
+    aiSaving.value = false
+    setTimeout(() => { aiMsg.value = '' }, 3000)
+  }
+}
+
 async function saveProfile() {
   saving.value = true
   saveMsg.value = ''
@@ -84,6 +204,7 @@ function handleLogout() {
 }
 
 loadProfile()
+loadAIConfig()
 </script>
 
 <template>
@@ -149,6 +270,98 @@ loadProfile()
           <span v-if="saveMsg === 'error'" class="save-msg error">保存失败，请重试</span>
         </div>
       </form>
+    </section>
+
+    <section class="panel card-surface">
+      <h2 class="section-title">AI 职业顾问配置</h2>
+      <p class="section-desc">
+        「AI职业顾问」使用你自己的模型服务，任何 <strong>OpenAI 兼容</strong>接口都可以
+        （DeepSeek、通义千问、Moonshot，或自建 vLLM / Ollama 网关）。填写后即可在 AI 顾问页面提问。
+      </p>
+
+      <div class="field-grid">
+        <label class="field">
+          <span class="field-label">API 地址（v1 根路径）</span>
+          <input v-model="aiBaseUrl" placeholder="如：https://api.deepseek.com/v1" />
+        </label>
+        <label class="field">
+          <span class="field-label">模型名称</span>
+          <div class="input-row">
+            <input v-model="aiModel" placeholder="如：deepseek-chat（可手动输入）" />
+            <button
+              type="button"
+              class="ghost-btn"
+              :disabled="aiLoadingModels"
+              @click="fetchAIModels"
+            >{{ aiLoadingModels ? '获取中...' : '获取模型' }}</button>
+          </div>
+        </label>
+      </div>
+
+      <p v-if="aiModelsError" class="save-msg error">{{ aiModelsError }}</p>
+      <div v-if="aiModels.length" class="model-picker">
+        <p class="picker-label">从接口获取到 {{ aiModels.length }} 个模型，点击选择：</p>
+        <div class="model-list">
+          <button
+            v-for="m in aiModels"
+            :key="m"
+            type="button"
+            class="model-chip"
+            :class="{ active: m === aiModel }"
+            @click="pickModel(m)"
+          >{{ m }}</button>
+        </div>
+      </div>
+
+      <label class="field">
+        <span class="field-label">
+          API Key
+          <span v-if="aiHasKey" class="key-badge">已保存，留空则不修改</span>
+        </span>
+        <input
+          v-model="aiKey"
+          type="password"
+          autocomplete="new-password"
+          :placeholder="aiHasKey ? '已保存（留空表示沿用原 Key）' : '粘贴你的 API Key'"
+        />
+      </label>
+      <p class="key-note">
+        Key 保存在本项目的数据库中，仅由后端在调用你填写的接口时使用，不会返回给浏览器。
+        请使用你自己的、可随时撤销的 Key。
+      </p>
+
+      <div class="form-footer">
+        <button type="button" class="save-btn" :disabled="aiSaving" @click="saveAIConfig">
+          {{ aiSaving ? '保存中...' : '保存配置' }}
+        </button>
+        <button
+          type="button"
+          class="ghost-btn"
+          :disabled="aiTesting"
+          @click="testAIConnection"
+        >{{ aiTesting ? '测试中...' : '测试连接' }}</button>
+        <button
+          v-if="aiHasKey || aiBaseUrl"
+          type="button"
+          class="ghost-btn"
+          :disabled="aiSaving"
+          @click="clearAIConfig"
+        >清除配置</button>
+        <span v-if="aiMsg === 'success'" class="save-msg success">已保存</span>
+        <span v-if="aiMsg === 'nokey'" class="save-msg error">已保存，但还没有 API Key</span>
+        <span v-if="aiMsg === 'invalid'" class="save-msg error">请填写 API 地址和模型名称</span>
+        <span v-if="aiMsg === 'cleared'" class="save-msg success">已清除</span>
+        <span v-if="aiMsg === 'error'" class="save-msg error">操作失败，请重试</span>
+      </div>
+
+      <p
+        v-if="aiTestResult"
+        class="test-result"
+        :class="aiTestResult.ok ? 'ok' : 'fail'"
+      >
+        <span class="test-icon">{{ aiTestResult.ok ? '✓' : '✕' }}</span>
+        {{ aiTestResult.message }}
+      </p>
     </section>
 
     <section class="panel card-surface account-section">
@@ -323,6 +536,68 @@ loadProfile()
 .account-section .logout-btn:hover {
   background: #e74c3c;
   color: #fff;
+}
+
+.model-picker { margin-top: var(--space-4); }
+.picker-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-2);
+}
+.model-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.model-chip {
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-color-strong);
+  background: var(--surface-color);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+.model-chip:hover { border-color: var(--primary-color); color: var(--primary-hover); }
+.model-chip.active {
+  background: var(--gradient-primary);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: var(--glow-primary);
+}
+
+.test-result {
+  margin-top: var(--space-4);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.test-result.ok {
+  background: var(--primary-soft);
+  color: var(--primary-hover);
+}
+.test-result.fail {
+  background: var(--accent-orange-soft);
+  color: var(--accent-orange);
+}
+.test-icon { font-weight: 700; flex-shrink: 0; }
+
+.key-badge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--primary-soft);
+  color: var(--primary-hover);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+.key-note {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  line-height: 1.6;
 }
 
 @media (max-width: 640px) {

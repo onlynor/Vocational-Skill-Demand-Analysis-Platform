@@ -152,6 +152,7 @@ prefillFromProfile()
   border-radius: var(--radius-md);
   font-size: var(--font-size-base);
   color: var(--text-color);
+  background: var(--surface-color);
   transition: border-color var(--transition), box-shadow var(--transition);
 }
 .input-row input:focus {

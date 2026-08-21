@@ -39,7 +39,23 @@ mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS job_analysis;"
 mysql -u root -p job_analysis < data/job_analysis.sql
 ```
 
-> 导入后即拥有完整的 `job_analysis` 数据库（含全部 10 张表，包括 `user_profile`），无需手动建表或爬数据。
+> 导入后即拥有完整的 `job_analysis` 数据库（含 10 张表，包括 `user_profile`），无需手动建表或爬数据。
+>
+> ⚠️ **AI 职业顾问用到的 `user_ai_config` 表是后加的，不在这份 dump 里**。要使用 AI 顾问功能，导入 dump 之后补建这张表（不影响已导入的数据）：
+> ```bash
+> mysql -u root -p job_analysis -e "
+> CREATE TABLE IF NOT EXISTS user_ai_config (
+>   id INT AUTO_INCREMENT PRIMARY KEY,
+>   user_id INT NOT NULL,
+>   api_base_url VARCHAR(255) DEFAULT NULL,
+>   api_key VARCHAR(255) DEFAULT NULL,
+>   model VARCHAR(128) DEFAULT NULL,
+>   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+>   UNIQUE KEY uk_ai_user (user_id),
+>   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+> ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;"
+> ```
+> 注意**不要**直接 `mysql ... < backend/schema.sql`：那个文件开头有 `USE job_analysis;`，会把语句执行到 `job_analysis` 库而不是你 `-D` 指定的库上。
 
 ### 3. 配置环境变量
 
@@ -131,10 +147,12 @@ pnpm dev
 │   ├── cleaner.py               # Pandas 数据清洗
 │   ├── segmenter.py             # Jieba 分词 + 技能提取
 │   ├── pipeline.py              # 完整数据处理流水线
+│   ├── ai_tools.py              # AI 顾问的检索工具（每个函数都是一次真实聚合查询）
 │   ├── routers/
 │   │   ├── auth_router.py       # 注册 / 登录
 │   │   ├── profile_router.py    # 职业画像查询 / 技能匹配（全部需要登录）
-│   │   └── account_router.py    # 个人求职画像的读取与保存（全部需要登录）
+│   │   ├── account_router.py    # 个人求职画像 + AI 接口配置（全部需要登录）
+│   │   └── advisor_router.py    # AI 职业顾问问答，OpenAI 兼容接口 + 工具调用
 │   ├── schema.sql               # 参考建表语句（真实数据以 data/job_analysis.sql 为准）
 │   ├── requirements.txt         # 后端服务自身的直接依赖
 │   └── Dockerfile               # 生产镜像构建
@@ -144,7 +162,8 @@ pnpm dev
 │   │   │   ├── LoginView.vue          # 登录 / 注册
 │   │   │   ├── JobProfileView.vue     # 职业画像仪表盘（行业-职位手风琴树，可拖拽调宽）
 │   │   │   ├── MatchView.vue          # 技能匹配（自动带出已保存的个人技能，可再编辑）
-│   │   │   └── AccountView.vue        # 个人中心：求职画像表单 + 退出登录
+│   │   │   ├── AdvisorView.vue        # AI 职业顾问对话页
+│   │   │   └── AccountView.vue        # 个人中心：求职画像 + AI 接口配置 + 退出登录
 │   │   ├── components/
 │   │   │   ├── common/           # BrandLogo / EmptyState / Loading / ThemeToggle
 │   │   │   └── dashboard/        # StatCard / ChartCard / Sidebar（可拖拽调宽）
@@ -168,7 +187,7 @@ pnpm dev
 
 ## API 概览
 
-路由前缀：认证 `/api/auth`，职业画像 `/api/profile`，个人账户 `/api/account`。除 `/api/auth/*` 外全部需要 `Authorization: Bearer <token>`。
+路由前缀：认证 `/api/auth`，职业画像 `/api/profile`，个人账户 `/api/account`，AI 顾问 `/api/advisor`。除 `/api/auth/*` 外全部需要 `Authorization: Bearer <token>`。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -183,6 +202,11 @@ pnpm dev
 | POST | `/api/profile/skills/match` | 技能匹配岗位 |
 | GET | `/api/account/me` | 获取当前用户的个人求职画像（未保存过则返回空字段，不是 404） |
 | PUT | `/api/account/profile` | 保存/更新个人求职画像（期望职位、城市、学历、经验、期望薪资、技能） |
+| GET/PUT/DELETE | `/api/account/ai-config` | 用户自己的 OpenAI 兼容接口配置（API Key 只写不读，不会返回前端） |
+| POST | `/api/account/ai-config/models` | 从接口的 `/models` 端点拉取可用模型列表 |
+| POST | `/api/account/ai-config/test` | 测试连接：真实发一次带工具定义的最小请求，验证地址/Key/模型/工具调用是否都可用 |
+| GET | `/api/advisor/status` | 当前用户是否已配置可用的 AI 模型 |
+| POST | `/api/advisor/chat` | AI 职业顾问问答（基于真实数据的工具调用） |
 
 前端 `axios` baseURL 由 `VITE_API_BASE_URL` 决定（本地 `pnpm dev` 默认回退到 `http://localhost:8000/api`），请求拦截器自动加 `Authorization: Bearer <token>`；登录守卫对 `requiresAuth` 路由检查 localStorage token（这只是前端跳转体验，真正的访问控制是后端对 `/api/profile/*`、`/api/account/*` 的 JWT 校验）。
 
@@ -192,7 +216,8 @@ pnpm dev
 2. **职业画像** — 行业→职位手风琴式展开选择（左侧面板宽度可拖拽调整），查看岗位数量、平均薪资、薪资范围，技能排行 / 城市分布 / 学历要求 / 招聘公司（ECharts 可视化，统一 StatCard / ChartCard 组件）
 3. **技能匹配** — 输入已有技能，匹配最适合的岗位，分析已匹配/需补充技能；若已在「个人中心」保存过求职画像，进入页面会自动带出已保存的技能（仍可编辑）
 4. **个人中心** — 手动填写求职画像（期望职位、城市、学历、经验、期望薪资范围、技能列表），退出登录入口也在这里（侧边栏底部只留头像，点击跳转）
-5. **界面** — 侧边栏宽度可拖拽调整（160–360px，记住上次设置）；支持浅色/深色主题切换（顶栏右上角按钮，记住选择，也会跟随系统偏好）
+5. **AI 职业顾问** — 基于平台真实招聘数据的智能问答，可以问岗位、技能、薪资、行业趋势和学习建议。回答里凡是涉及数字的结论，都由模型先调用后端查询工具（岗位画像 / 技能排行 / 技能薪资 / 城市分布等）拿到真实聚合数据后再作答，答案下方会标注本次查询了哪些数据，尽量避免脱离数据臆造。**使用你自己的模型服务**：任何 OpenAI 兼容接口都可以（DeepSeek、通义千问、Moonshot，或自建 vLLM / Ollama 网关），在「个人中心」填写 API 地址和 API Key 后，可以点「获取模型」直接从接口的 `/models` 端点拉取模型列表点选（也可以手动输入模型名），再点「测试连接」验证是否可用——测试会真实发一次带工具定义的最小请求，因此能区分「连不上/Key 错误」和「能连上但该模型不支持 function calling」（AI 顾问依赖工具调用查真实数据，后者同样用不了）。项目本身不绑定任何厂商、不内置任何 Key。
+6. **界面** — 侧边栏宽度可拖拽调整（160–360px，记住上次设置）；支持浅色/深色主题切换（顶栏右上角按钮，记住选择，也会跟随系统偏好）
 
 ## 数据处理管道
 
